@@ -81,6 +81,10 @@ github-linecount/
 ├── content.js          # Main logic for analyzing PRs
 ├── styles.css          # UI styling
 ├── icons/              # Extension icons
+├── tests/              # Automated tests
+│   ├── e2e/           # Puppeteer E2E tests
+│   └── README.md      # Testing documentation
+├── package.json        # Node.js dependencies
 └── README.md          # This file
 ```
 
@@ -90,6 +94,23 @@ github-linecount/
 2. Go to `chrome://extensions/`
 3. Click the refresh icon on the extension card
 4. Refresh the GitHub PR page to see changes
+
+### Testing
+
+Run automated E2E tests with screenshots:
+
+```bash
+npm install           # Install dependencies (first time only)
+npm run test:e2e      # Run E2E tests with Puppeteer
+```
+
+The tests will:
+- Launch Chrome with the extension loaded
+- Navigate to a real GitHub PR
+- Take screenshots documenting the extension behavior
+- Verify the language stats panel appears correctly
+
+See [tests/README.md](tests/README.md) for detailed testing documentation.
 
 ### Contributing
 

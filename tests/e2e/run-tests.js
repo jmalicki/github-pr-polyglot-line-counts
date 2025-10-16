@@ -45,19 +45,20 @@ async function testExtension() {
   await page.setViewport({ width: 1920, height: 1080 });
 
   try {
-    // Test on a real GitHub PR (using a popular open source project)
-    const testPR = 'https://github.com/facebook/react/pull/31835';
+    // Test on a real GitHub PR
+    // You can change this to any PR you want to test
+    const testPR = process.env.TEST_PR_URL || 'https://github.com/jmalicki/arsync/pull/55';
     
-    console.log(`📄 Navigating to test PR: ${testPR}`);
+    console.log(`📄 Navigating to: ${testPR}`);
     await page.goto(testPR, { waitUntil: 'networkidle2', timeout: 30000 });
 
     // Wait for GitHub to load
     console.log('⏳ Waiting for GitHub page to load...');
-    await page.waitForSelector('.gh-header-meta', { timeout: 10000 });
+    await page.waitForSelector('.gh-header-meta, [data-hpc]', { timeout: 15000 });
 
     // Give the extension time to analyze the diff
     console.log('🔍 Waiting for extension to analyze the PR...');
-    await page.waitForTimeout(3000);
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
     // Take screenshot before scrolling
     const screenshotBefore = join(screenshotsDir, '01-pr-page-loaded.png');
@@ -78,7 +79,7 @@ async function testExtension() {
         }
       });
       
-      await page.waitForTimeout(500);
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Take screenshot with panel visible
       const screenshotPanel = join(screenshotsDir, '02-language-stats-panel.png');
@@ -115,7 +116,7 @@ async function testExtension() {
       const filesTab = await page.$('a[data-hotkey="f"]');
       if (filesTab) {
         await filesTab.click();
-        await page.waitForTimeout(2000);
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
         const screenshotFiles = join(screenshotsDir, '04-files-changed-tab.png');
         await page.screenshot({ path: screenshotFiles, fullPage: false });
@@ -149,7 +150,7 @@ async function testExtension() {
   } finally {
     // Keep browser open for manual inspection in headless: false mode
     console.log('\n⏸️  Browser will stay open for 30 seconds for inspection...');
-    await page.waitForTimeout(30000);
+    await new Promise(resolve => setTimeout(resolve, 30000));
     
     await browser.close();
     console.log('👋 Browser closed');

@@ -18,12 +18,21 @@ class GitHubPRLanguageStats {
   waitForPRPage() {
     return new Promise((resolve) => {
       const checkInterval = setInterval(() => {
-        const diffContainer = document.querySelector('.diff-view');
+        // Check for either old or new GitHub UI
+        const diffContainer = document.querySelector('.diff-view, .js-diff-progressive-container, [data-hpc], .file-header');
         if (diffContainer) {
           clearInterval(checkInterval);
+          console.log('[PR Lang Stats] PR page detected, starting analysis...');
           resolve();
         }
       }, 500);
+      
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        console.warn('[PR Lang Stats] Timeout waiting for PR page, attempting analysis anyway...');
+        resolve();
+      }, 10000);
     });
   }
 
@@ -262,8 +271,9 @@ class GitHubPRLanguageStats {
   setupDOMObserver() {
     // Watch for PR page changes (e.g., switching tabs, lazy loading)
     this.observer = new MutationObserver(() => {
-      const diffView = document.querySelector('.diff-view');
+      const diffView = document.querySelector('.diff-view, .js-diff-progressive-container, [data-hpc], .file-header');
       if (diffView && !document.getElementById('pr-language-stats-panel')) {
+        console.log('[PR Lang Stats] DOM changed, re-analyzing...');
         this.analyze();
       }
     });

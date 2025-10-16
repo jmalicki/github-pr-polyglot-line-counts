@@ -1,0 +1,94 @@
+/**
+ * Test handling of null totals from GitHub API
+ * (Will run when rate limit resets - rename to .test.js)
+ */
+
+import { describe, it, expect } from 'vitest';
+import { calculateLanguageStats, calculateTotals } from '../../lib/language-detector.js';
+
+describe('Null Totals Handling', () => {
+  it('should calculate totals from individual files when PR totals are null', async () => {
+    // This happens with huge PRs where GitHub times out computing totals
+    
+    const prResponse = await fetch('https://api.github.com/repos/jmalicki/arsync/pulls/33');
+    const prData = await prResponse.json();
+    
+    console.log('\n📊 PR #33 data:');
+    console.log(`   additions: ${prData.additions}`);
+    console.log(`   deletions: ${prData.deletions}`);
+    console.log(`   changed_files: ${prData.changed_files}`);
+    
+    // Get files directly
+    let allFiles = [];
+    let page = 1;
+    let hasMore = true;
+    
+    while (hasMore && page <= 3) { // Up to 300 files max
+      const response = await fetch(`https://api.github.com/repos/jmalicki/arsync/pulls/33/files?per_page=100&page=${page}`);
+      const files = await response.json();
+      
+      if (files.message) break; // Error response
+      
+      allFiles = allFiles.concat(files);
+      hasMore = files.length === 100;
+      page++;
+    }
+    
+    console.log(`\n📁 Fetched ${allFiles.length} files`);
+    
+    // Calculate OUR totals from individual files
+    const stats = calculateLanguageStats(allFiles);
+    const totals = calculateTotals(stats);
+    
+    console.log(`\n✅ Our calculated totals: +${totals.totalAdded} -${totals.totalRemoved}`);
+    
+    if (prData.additions === null) {
+      console.log('   ✓ PR totals are null (as expected for huge PR)');
+      console.log('   ✓ We calculated totals ourselves from individual files');
+      
+      // We should have calculated something
+      expect(totals.totalAdded).toBeGreaterThan(0);
+      expect(totals.totalFiles).toBe(allFiles.length);
+    } else {
+      // If PR totals exist, they should match
+      expect(totals.totalAdded).toBe(prData.additions);
+      expect(totals.totalRemoved).toBe(prData.deletions);
+    }
+  });
+
+  it('should handle 300 file limit', async () => {
+    // GitHub API only returns max 300 files per PR
+    
+    let allFiles = [];
+    let page = 1;
+    let hasMore = true;
+    
+    while (hasMore && page <= 10) {
+      const response = await fetch(`https://api.github.com/repos/jmalicki/arsync/pulls/33/files?per_page=100&page=${page}`);
+      const files = await response.json();
+      
+      if (files.message) break;
+      
+      allFiles = allFiles.concat(files);
+      console.log(`Page ${page}: ${files.length} files (total: ${allFiles.length})`);
+      
+      hasMore = files.length === 100;
+      page++;
+      
+      // Safety check - if we hit 300, that's the limit
+      if (allFiles.length >= 300) {
+        console.log('⚠️  Hit 300 file limit');
+        break;
+      }
+    }
+    
+    if (allFiles.length === 300) {
+      console.log('   GitHub API 300 file limit confirmed');
+      console.log('   Extension should show warning for PRs with >300 files');
+    }
+    
+    expect(allFiles.length).toBeGreaterThan(0);
+    expect(allFiles.length).toBeLessThanOrEqual(300);
+  });
+});
+

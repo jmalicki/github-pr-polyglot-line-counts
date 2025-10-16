@@ -417,6 +417,10 @@ class GitHubPRLanguageStats {
     const existingPanel = document.getElementById('pr-language-stats-panel');
     
     if (existingPanel) {
+      // Save scroll position before updating
+      const scrollY = window.scrollY;
+      const scrollX = window.scrollX;
+      
       // Hide panel, update content, then show (atomic visual update)
       existingPanel.style.opacity = '0';
       
@@ -427,6 +431,12 @@ class GitHubPRLanguageStats {
       void existingPanel.offsetHeight;
       
       existingPanel.style.opacity = '1';
+      
+      // Restore scroll position (prevent jump)
+      if (window.scrollY !== scrollY || window.scrollX !== scrollX) {
+        window.scrollTo(scrollX, scrollY);
+      }
+      
       return;
     }
 
@@ -437,9 +447,16 @@ class GitHubPRLanguageStats {
       return;
     }
 
+    // Save scroll position
+    const scrollY = window.scrollY;
+    const scrollX = window.scrollX;
+
     const statsPanel = this.createStatsPanel();
     statsPanel.style.opacity = '0';
     prHeader.parentNode.insertBefore(statsPanel, prHeader.nextSibling);
+    
+    // Restore scroll position immediately
+    window.scrollTo(scrollX, scrollY);
     
     // Reveal after insertion
     requestAnimationFrame(() => {

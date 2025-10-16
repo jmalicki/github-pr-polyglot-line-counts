@@ -184,9 +184,11 @@ async function testExtension() {
     
     throw error;
   } finally {
-    // Keep browser open for manual inspection in headless: false mode
-    console.log('\n⏸️  Browser will stay open for 30 seconds for inspection...');
-    await new Promise(resolve => setTimeout(resolve, 30000));
+    // Keep browser open for manual inspection if DEBUG env var is set
+    if (process.env.DEBUG) {
+      console.log('\n⏸️  Browser will stay open for 30 seconds for inspection...');
+      await new Promise(resolve => setTimeout(resolve, 30000));
+    }
     
     await browser.close();
     console.log('👋 Browser closed');

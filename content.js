@@ -127,28 +127,23 @@ class GitHubPRLanguageStats {
     const prInfo = this.extractPRInfo();
     this.languageStats.clear();
 
-    // Get all file diffs - use data attributes and roles for reliability
-    // Priority: data-tagsearch-path > data-path > role="treeitem" > class-based fallback
-    let fileHeaders = document.querySelectorAll('[data-tagsearch-path]');
-    if (fileHeaders.length === 0) {
-      fileHeaders = document.querySelectorAll('[data-path][data-file-type]');
-    }
-    if (fileHeaders.length === 0) {
-      fileHeaders = document.querySelectorAll('[role="treeitem"][data-file-type]');
-    }
-    if (fileHeaders.length === 0) {
-      // Fallback to class-based selectors
-      fileHeaders = document.querySelectorAll('.file-header, .file-info');
+    // Modern GitHub uses .file-info containers with data-details-container-group="file"
+    // These contain both the filename and the diff/stats
+    let fileContainers = document.querySelectorAll('[data-details-container-group="file"]');
+    
+    // Fallback to old selectors if new ones not found
+    if (fileContainers.length === 0) {
+      fileContainers = document.querySelectorAll('.file');
     }
     
-    console.log('[PR Lang Stats] Found', fileHeaders.length, 'file entries');
+    console.log('[PR Lang Stats] Found', fileContainers.length, 'file containers');
     
-    for (const header of fileHeaders) {
-      const fileInfo = this.extractFileInfo(header);
+    for (const container of fileContainers) {
+      const fileInfo = this.extractFileInfo(container);
       if (!fileInfo) continue;
 
       const language = this.detectLanguageFromFilename(fileInfo.filename);
-      const stats = this.calculateFileStats(header.closest('.file, [data-tagsearch-path]'));
+      const stats = this.calculateFileStats(container);
 
       if (!this.languageStats.has(language)) {
         this.languageStats.set(language, { added: 0, removed: 0, files: 0 });
@@ -164,52 +159,55 @@ class GitHubPRLanguageStats {
     this.displayStats();
   }
 
-  extractFileInfo(header) {
+  extractFileInfo(container) {
     // Try multiple ways to get the filename, prioritizing data attributes
     let filename = null;
     
-    // Method 1: data-tagsearch-path attribute (most reliable)
-    filename = header.getAttribute('data-tagsearch-path');
+    // Method 1: data-tagsearch-path attribute (most reliable for modern GitHub)
+    filename = container.getAttribute('data-tagsearch-path');
     
     // Method 2: data-path attribute
     if (!filename) {
-      filename = header.getAttribute('data-path');
+      filename = container.getAttribute('data-path');
     }
     
-    // Method 3: Look for data-path on child elements
+    // Method 3: Look for data-tagsearch-path or data-path on nested elements
     if (!filename) {
-      const pathElement = header.querySelector('[data-path]');
+      const pathElement = container.querySelector('[data-tagsearch-path], [data-path]');
       if (pathElement) {
-        filename = pathElement.getAttribute('data-path');
+        filename = pathElement.getAttribute('data-tagsearch-path') || 
+                   pathElement.getAttribute('data-path');
       }
     }
     
-    // Method 4: title attribute (fallback)
+    // Method 4: Parse from text content (GitHub shows "{changes} changes: ... {filename}")
     if (!filename) {
-      const titleElement = header.querySelector('[title]');
+      const text = container.textContent;
+      // Look for patterns like "crates/compio-sync/src/condvar.rs" in the text
+      const pathMatch = text.match(/([a-zA-Z0-9_\-/.]+\.[a-z]+)/);
+      if (pathMatch) {
+        filename = pathMatch[1];
+      }
+    }
+    
+    // Method 5: title attribute (fallback)
+    if (!filename) {
+      const titleElement = container.querySelector('[title]');
       if (titleElement) {
         filename = titleElement.getAttribute('title') || titleElement.textContent.trim();
       }
     }
     
-    // Method 5: clipboard-copy attribute
+    // Method 6: clipboard-copy attribute
     if (!filename) {
-      const copyElement = header.querySelector('clipboard-copy');
+      const copyElement = container.querySelector('clipboard-copy');
       if (copyElement) {
         filename = copyElement.getAttribute('value');
       }
     }
     
-    // Method 6: Look for file-info element
     if (!filename) {
-      const fileInfoElement = header.querySelector('.file-info a, .file-info');
-      if (fileInfoElement) {
-        filename = fileInfoElement.textContent.trim();
-      }
-    }
-    
-    if (!filename) {
-      console.warn('[PR Lang Stats] Could not extract filename from element:', header);
+      console.warn('[PR Lang Stats] Could not extract filename from container:', container);
       return null;
     }
 

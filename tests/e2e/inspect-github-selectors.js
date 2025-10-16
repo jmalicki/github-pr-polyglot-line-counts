@@ -190,8 +190,10 @@ async function inspectSelectors() {
   console.log('\n  Current approach (class-based):');
   console.log('    document.querySelectorAll(".file-header")');
   
-  console.log('\n\n⏸️  Browser will stay open for 30 seconds for manual inspection...');
-  await new Promise(resolve => setTimeout(resolve, 30000));
+  if (process.env.DEBUG) {
+    console.log('\n\n⏸️  Browser will stay open for 30 seconds for manual inspection...');
+    await new Promise(resolve => setTimeout(resolve, 30000));
+  }
   
   await browser.close();
   console.log('\n✅ Inspection complete!');

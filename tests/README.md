@@ -19,7 +19,8 @@ tests/
 Run the full end-to-end test suite:
 
 ```bash
-npm run test:e2e
+npm run test:e2e        # Run tests (browser closes immediately)
+DEBUG=1 npm run test:e2e  # Keep browser open for 30s to inspect
 ```
 
 This will:

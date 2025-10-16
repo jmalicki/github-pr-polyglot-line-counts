@@ -574,47 +574,65 @@ class GitHubPRLanguageStats {
 
   async analyzeViaAPI(prInfo) {
     try {
-      // Fetch ALL files from GitHub API (handle pagination)
-      let allFiles = [];
-      let page = 1;
-      let hasMore = true;
+      // Use the early API fetch if available (started before DOM was ready!)
+      let apiResult = null;
       
-      while (hasMore && page <= 10) { // Max 10 pages (1000 files) for safety
-        const url = `https://api.github.com/repos/${prInfo.owner}/${prInfo.repo}/pulls/${prInfo.prNumber}/files?per_page=100&page=${page}`;
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-          // Check for rate limit
-          if (response.status === 403 || response.status === 429) {
-            const errorData = await response.json().catch(() => ({}));
-            const message = errorData.message || 'Rate limit exceeded';
-            console.warn(`[PR Lang Stats] ${message}`);
-            this.showRateLimitError(message);
-            return; // Don't fallback to DOM - show error instead
-          }
-          
-          console.warn(`[PR Lang Stats] API request failed (${response.status}), falling back to DOM`);
-          return this.analyzeViaDOM();
-        }
-        
-        const files = await response.json();
-        
-        // Check if response is an error object
-        if (files.message && files.message.includes('rate limit')) {
-          console.warn('[PR Lang Stats] Rate limit hit');
-          this.showRateLimitError(files.message);
+      if (apiDataPromise) {
+        console.log('[PR Lang Stats] Using early API fetch result...');
+        apiResult = await apiDataPromise;
+        apiDataPromise = null; // Clear it so we don't reuse
+      }
+      
+      // If early fetch failed or wasn't available, fetch now
+      if (!apiResult || !apiResult.success) {
+        if (apiResult && apiResult.error && apiResult.error.isRateLimit) {
+          this.showRateLimitError(apiResult.error.message);
           return;
         }
         
-        allFiles = allFiles.concat(files);
+        console.log('[PR Lang Stats] Fetching from API now...');
         
-        console.log(`[PR Lang Stats] Fetched page ${page}: ${files.length} files (total: ${allFiles.length})`);
+        // Fetch ALL files from GitHub API (handle pagination)
+        let allFiles = [];
+        let page = 1;
+        let hasMore = true;
         
-        // Check if there are more pages
-        hasMore = files.length === 100; // If we got exactly 100, there might be more
-        page++;
+        while (hasMore && page <= 10) {
+          const url = `https://api.github.com/repos/${prInfo.owner}/${prInfo.repo}/pulls/${prInfo.prNumber}/files?per_page=100&page=${page}`;
+          const response = await fetch(url);
+          
+          if (!response.ok) {
+            if (response.status === 403 || response.status === 429) {
+              const errorData = await response.json().catch(() => ({}));
+              const message = errorData.message || 'Rate limit exceeded';
+              console.warn(`[PR Lang Stats] ${message}`);
+              this.showRateLimitError(message);
+              return;
+            }
+            
+            console.warn(`[PR Lang Stats] API request failed (${response.status}), falling back to DOM`);
+            return this.analyzeViaDOM();
+          }
+          
+          const files = await response.json();
+          
+          if (files.message && files.message.includes('rate limit')) {
+            console.warn('[PR Lang Stats] Rate limit hit');
+            this.showRateLimitError(files.message);
+            return;
+          }
+          
+          allFiles = allFiles.concat(files);
+          console.log(`[PR Lang Stats] Fetched page ${page}: ${files.length} files (total: ${allFiles.length})`);
+          
+          hasMore = files.length === 100;
+          page++;
+        }
+        
+        apiResult = { success: true, files: allFiles };
       }
       
+      const allFiles = apiResult.files;
       console.log(`[PR Lang Stats] Total files from API: ${allFiles.length}`);
       
       this.languageStats.clear();
@@ -750,6 +768,66 @@ class GitHubPRLanguageStats {
 
 // Global reference to the extension instance
 let extensionInstance = null;
+
+// Start API fetch IMMEDIATELY (before DOM is even ready!)
+// This parallelizes the network request with page rendering
+let apiDataPromise = null;
+
+function startEarlyAPIFetch() {
+  // Parse URL to get PR info (no DOM needed!)
+  const match = window.location.pathname.match(/\/([^\/]+)\/([^\/]+)\/pull\/(\d+)/);
+  if (!match) return;
+  
+  const [, owner, repo, prNumber] = match;
+  
+  console.log('[PR Lang Stats] 🚀 Starting early API fetch...');
+  
+  // Start fetching immediately (parallel with page load!)
+  apiDataPromise = (async () => {
+    try {
+      let allFiles = [];
+      let page = 1;
+      let hasMore = true;
+      
+      while (hasMore && page <= 10) {
+        const url = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100&page=${page}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          const error = { status: response.status, response };
+          if (response.status === 403 || response.status === 429) {
+            const errorData = await response.json().catch(() => ({}));
+            error.message = errorData.message || 'Rate limit exceeded';
+            error.isRateLimit = true;
+          }
+          throw error;
+        }
+        
+        const files = await response.json();
+        
+        if (files.message && files.message.includes('rate limit')) {
+          throw { isRateLimit: true, message: files.message };
+        }
+        
+        allFiles = allFiles.concat(files);
+        console.log(`[PR Lang Stats] Early fetch page ${page}: ${files.length} files`);
+        
+        hasMore = files.length === 100;
+        page++;
+      }
+      
+      console.log(`[PR Lang Stats] ✅ Early fetch complete: ${allFiles.length} files`);
+      return { success: true, files: allFiles };
+      
+    } catch (error) {
+      console.warn('[PR Lang Stats] Early fetch failed:', error.message || error);
+      return { success: false, error };
+    }
+  })();
+}
+
+// Start API fetch immediately (before anything else!)
+startEarlyAPIFetch();
 
 // Inject placeholder skeleton IMMEDIATELY (synchronous) to prevent layout shift
 function injectPlaceholderSkeleton() {

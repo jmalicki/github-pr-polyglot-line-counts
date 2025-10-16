@@ -14,9 +14,13 @@ Thumbs.db
 *.pem
 *.zip
 
-# Node (if we add build tools later)
+# Node
 node_modules/
 package-lock.json
+
+# Test outputs
+tests/screenshots/
+coverage/
 
 # Logs
 *.log

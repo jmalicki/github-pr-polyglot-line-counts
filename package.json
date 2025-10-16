@@ -1,0 +1,28 @@
+{
+  "name": "github-pr-language-stats",
+  "version": "1.0.0",
+  "description": "Chrome extension that shows line count statistics by programming language for GitHub pull requests",
+  "main": "content.js",
+  "scripts": {
+    "test": "vitest run",
+    "test:e2e": "node tests/e2e/run-tests.js",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
+  },
+  "keywords": [
+    "chrome-extension",
+    "github",
+    "pull-request",
+    "language-stats",
+    "code-review"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@vitest/ui": "^3.2.4",
+    "puppeteer": "^24.25.0",
+    "vitest": "^3.2.4"
+  },
+  "type": "module"
+}

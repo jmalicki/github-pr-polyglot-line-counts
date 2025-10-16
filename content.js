@@ -18,11 +18,20 @@ class GitHubPRLanguageStats {
   waitForPRPage() {
     return new Promise((resolve) => {
       const checkInterval = setInterval(() => {
-        // Check for either old or new GitHub UI
-        const diffContainer = document.querySelector('.diff-view, .js-diff-progressive-container, [data-hpc], .file-header');
-        if (diffContainer) {
+        // Wait for file containers to be present (modern GitHub)
+        const fileContainers = document.querySelectorAll('[data-details-container-group="file"]');
+        
+        // Fallback: Check for either old or new GitHub UI
+        const diffContainer = document.querySelector('.diff-view, .js-diff-progressive-container, [data-hpc], .file-header, .file');
+        
+        // Resolve when we have containers with content
+        if (fileContainers.length > 0) {
           clearInterval(checkInterval);
-          console.log('[PR Lang Stats] PR page detected, starting analysis...');
+          console.log(`[PR Lang Stats] Found ${fileContainers.length} file containers, starting analysis...`);
+          resolve();
+        } else if (diffContainer) {
+          clearInterval(checkInterval);
+          console.log('[PR Lang Stats] PR page detected (fallback selector), starting analysis...');
           resolve();
         }
       }, 500);
@@ -217,21 +226,46 @@ class GitHubPRLanguageStats {
   calculateFileStats(fileElement) {
     const stats = { added: 0, removed: 0 };
     
-    // Look for GitHub's diff stats
-    const diffStats = fileElement.querySelector('.diffbar');
-    if (diffStats) {
-      const addedSpan = diffStats.querySelector('.diffstat-bar-added');
-      const deletedSpan = diffStats.querySelector('.diffstat-bar-deleted');
+    // Method 1: Parse from text (modern GitHub format)
+    // Format: "325 changes: 325 additions & 0 deletions" or "118 changes: 62 additions & 56 deletions"
+    // Match the pattern: "{number} addition(s) & {number} deletion(s)"
+    const text = fileElement.textContent;
+    const statsPattern = /(\d+)\s+addition(?:s)?\s+&\s+(\d+)\s+deletion(?:s)?/;
+    const match = text.match(statsPattern);
+    
+    if (match) {
+      stats.added = parseInt(match[1]);
+      stats.removed = parseInt(match[2]);
+    } else {
+      // Try individual patterns if the full pattern doesn't match
+      const additionsMatch = text.match(/(\d+)\s+addition/);
+      const deletionsMatch = text.match(/(\d+)\s+deletion/);
       
-      if (addedSpan) {
-        stats.added = parseInt(addedSpan.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
+      if (additionsMatch) {
+        stats.added = parseInt(additionsMatch[1]);
       }
-      if (deletedSpan) {
-        stats.removed = parseInt(deletedSpan.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
+      if (deletionsMatch) {
+        stats.removed = parseInt(deletionsMatch[1]);
+      }
+    }
+    
+    // Method 2: Look for GitHub's diff stats bar (older GitHub UI)
+    if (stats.added === 0 && stats.removed === 0) {
+      const diffStats = fileElement.querySelector('.diffbar');
+      if (diffStats) {
+        const addedSpan = diffStats.querySelector('.diffstat-bar-added');
+        const deletedSpan = diffStats.querySelector('.diffstat-bar-deleted');
+        
+        if (addedSpan) {
+          stats.added = parseInt(addedSpan.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
+        }
+        if (deletedSpan) {
+          stats.removed = parseInt(deletedSpan.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
+        }
       }
     }
 
-    // Fallback: count diff lines manually
+    // Method 3: Fallback - count diff lines manually
     if (stats.added === 0 && stats.removed === 0) {
       const lines = fileElement.querySelectorAll('.blob-code');
       lines.forEach(line => {

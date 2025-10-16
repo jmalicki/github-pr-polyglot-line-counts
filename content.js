@@ -127,15 +127,28 @@ class GitHubPRLanguageStats {
     const prInfo = this.extractPRInfo();
     this.languageStats.clear();
 
-    // Get all file diffs
-    const fileHeaders = document.querySelectorAll('.file-header');
+    // Get all file diffs - use data attributes and roles for reliability
+    // Priority: data-tagsearch-path > data-path > role="treeitem" > class-based fallback
+    let fileHeaders = document.querySelectorAll('[data-tagsearch-path]');
+    if (fileHeaders.length === 0) {
+      fileHeaders = document.querySelectorAll('[data-path][data-file-type]');
+    }
+    if (fileHeaders.length === 0) {
+      fileHeaders = document.querySelectorAll('[role="treeitem"][data-file-type]');
+    }
+    if (fileHeaders.length === 0) {
+      // Fallback to class-based selectors
+      fileHeaders = document.querySelectorAll('.file-header, .file-info');
+    }
+    
+    console.log('[PR Lang Stats] Found', fileHeaders.length, 'file entries');
     
     for (const header of fileHeaders) {
       const fileInfo = this.extractFileInfo(header);
       if (!fileInfo) continue;
 
       const language = this.detectLanguageFromFilename(fileInfo.filename);
-      const stats = this.calculateFileStats(header.closest('.file'));
+      const stats = this.calculateFileStats(header.closest('.file, [data-tagsearch-path]'));
 
       if (!this.languageStats.has(language)) {
         this.languageStats.set(language, { added: 0, removed: 0, files: 0 });
@@ -147,16 +160,60 @@ class GitHubPRLanguageStats {
       langStats.files += 1;
     }
 
+    console.log('[PR Lang Stats] Language stats:', Array.from(this.languageStats.entries()));
     this.displayStats();
   }
 
   extractFileInfo(header) {
-    const titleElement = header.querySelector('[title]');
-    if (!titleElement) return null;
+    // Try multiple ways to get the filename, prioritizing data attributes
+    let filename = null;
+    
+    // Method 1: data-tagsearch-path attribute (most reliable)
+    filename = header.getAttribute('data-tagsearch-path');
+    
+    // Method 2: data-path attribute
+    if (!filename) {
+      filename = header.getAttribute('data-path');
+    }
+    
+    // Method 3: Look for data-path on child elements
+    if (!filename) {
+      const pathElement = header.querySelector('[data-path]');
+      if (pathElement) {
+        filename = pathElement.getAttribute('data-path');
+      }
+    }
+    
+    // Method 4: title attribute (fallback)
+    if (!filename) {
+      const titleElement = header.querySelector('[title]');
+      if (titleElement) {
+        filename = titleElement.getAttribute('title') || titleElement.textContent.trim();
+      }
+    }
+    
+    // Method 5: clipboard-copy attribute
+    if (!filename) {
+      const copyElement = header.querySelector('clipboard-copy');
+      if (copyElement) {
+        filename = copyElement.getAttribute('value');
+      }
+    }
+    
+    // Method 6: Look for file-info element
+    if (!filename) {
+      const fileInfoElement = header.querySelector('.file-info a, .file-info');
+      if (fileInfoElement) {
+        filename = fileInfoElement.textContent.trim();
+      }
+    }
+    
+    if (!filename) {
+      console.warn('[PR Lang Stats] Could not extract filename from element:', header);
+      return null;
+    }
 
-    return {
-      filename: titleElement.getAttribute('title') || titleElement.textContent.trim()
-    };
+    return { filename };
   }
 
   calculateFileStats(fileElement) {
@@ -271,7 +328,8 @@ class GitHubPRLanguageStats {
   setupDOMObserver() {
     // Watch for PR page changes (e.g., switching tabs, lazy loading)
     this.observer = new MutationObserver(() => {
-      const diffView = document.querySelector('.diff-view, .js-diff-progressive-container, [data-hpc], .file-header');
+      // Use data attributes for more reliable detection
+      const diffView = document.querySelector('[data-tagsearch-path], [data-hpc], .file-header');
       if (diffView && !document.getElementById('pr-language-stats-panel')) {
         console.log('[PR Lang Stats] DOM changed, re-analyzing...');
         this.analyze();

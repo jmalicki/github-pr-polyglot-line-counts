@@ -50,11 +50,30 @@ async function testExtension() {
     const testPR = process.env.TEST_PR_URL || 'https://github.com/jmalicki/arsync/pull/55';
     
     console.log(`📄 Navigating to: ${testPR}`);
-    await page.goto(testPR, { waitUntil: 'networkidle2', timeout: 30000 });
+    
+    // Extract PR info for API validation
+    const prMatch = testPR.match(/github\.com\/([^\/]+)\/([^\/]+)\/pull\/(\d+)/);
+    const [, owner, repo, prNumber] = prMatch;
+    
+    // Fetch actual GitHub stats via API for validation
+    console.log('📊 Fetching GitHub PR stats for validation...');
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`;
+    const response = await fetch(apiUrl);
+    const prData = await response.json();
+    const expectedStats = {
+      additions: prData.additions,
+      deletions: prData.deletions,
+      changedFiles: prData.changed_files
+    };
+    console.log(`   Expected: +${expectedStats.additions} -${expectedStats.deletions} (${expectedStats.changedFiles} files)\n`);
+    
+    // Go directly to Files changed tab by appending /files
+    const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
+    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-    // Wait for GitHub to load
-    console.log('⏳ Waiting for GitHub page to load...');
-    await page.waitForSelector('.gh-header-meta, [data-hpc]', { timeout: 15000 });
+    // Wait for GitHub to load the diff view
+    console.log('⏳ Waiting for GitHub diff view to load...');
+    await page.waitForSelector('.file-header, [data-file-type], [data-tagsearch-path]', { timeout: 15000 });
 
     // Give the extension time to analyze the diff
     console.log('🔍 Waiting for extension to analyze the PR...');
@@ -109,19 +128,36 @@ async function testExtension() {
         console.log('─'.repeat(60));
         stats.forEach(stat => console.log(stat));
         console.log('─'.repeat(60));
+        
+        // Validate totals match GitHub's reported stats
+        const totalRow = stats[stats.length - 1];
+        if (totalRow) {
+          const match = totalRow.match(/Total.*?\+(\d+).*?-(\d+)/);
+          if (match) {
+            const extractedAdded = parseInt(match[1]);
+            const extractedRemoved = parseInt(match[2]);
+            
+            console.log('\n🔍 Validation:');
+            console.log(`   Extension reports: +${extractedAdded} -${extractedRemoved}`);
+            console.log(`   GitHub API reports: +${expectedStats.additions} -${expectedStats.deletions}`);
+            
+            const addedMatch = extractedAdded === expectedStats.additions;
+            const removedMatch = extractedRemoved === expectedStats.deletions;
+            
+            if (addedMatch && removedMatch) {
+              console.log('   ✅ Totals match perfectly!');
+            } else {
+              console.log('   ❌ Totals DO NOT match!');
+              console.log(`   Difference: ${expectedStats.additions - extractedAdded} additions, ${expectedStats.deletions - extractedRemoved} deletions`);
+            }
+          }
+        }
       }
       
-      // Test on Files Changed tab
-      console.log('\n🔄 Switching to "Files changed" tab...');
-      const filesTab = await page.$('a[data-hotkey="f"]');
-      if (filesTab) {
-        await filesTab.click();
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        const screenshotFiles = join(screenshotsDir, '04-files-changed-tab.png');
-        await page.screenshot({ path: screenshotFiles, fullPage: false });
-        console.log(`📸 Screenshot saved: ${screenshotFiles}`);
-      }
+      // Already on Files Changed tab, just take a screenshot
+      const screenshotFiles = join(screenshotsDir, '04-files-view.png');
+      await page.screenshot({ path: screenshotFiles, fullPage: false });
+      console.log(`📸 Files view screenshot saved: ${screenshotFiles}`);
 
     } else {
       console.log('❌ Language stats panel NOT found');

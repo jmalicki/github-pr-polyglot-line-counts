@@ -583,23 +583,36 @@ class GitHubPRLanguageStats {
 
   async analyzeViaAPI(prInfo) {
     try {
-      // Fetch files from GitHub API
-      const url = `https://api.github.com/repos/${prInfo.owner}/${prInfo.repo}/pulls/${prInfo.prNumber}/files?per_page=100`;
-      const response = await fetch(url);
+      // Fetch ALL files from GitHub API (handle pagination)
+      let allFiles = [];
+      let page = 1;
+      let hasMore = true;
       
-      if (!response.ok) {
-        console.warn('[PR Lang Stats] API request failed, falling back to DOM');
-        this.languageStats.clear();
-        return this.analyzeViaDOM();
+      while (hasMore && page <= 10) { // Max 10 pages (1000 files) for safety
+        const url = `https://api.github.com/repos/${prInfo.owner}/${prInfo.repo}/pulls/${prInfo.prNumber}/files?per_page=100&page=${page}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          console.warn('[PR Lang Stats] API request failed, falling back to DOM');
+          return this.analyzeViaDOM();
+        }
+        
+        const files = await response.json();
+        allFiles = allFiles.concat(files);
+        
+        console.log(`[PR Lang Stats] Fetched page ${page}: ${files.length} files (total: ${allFiles.length})`);
+        
+        // Check if there are more pages
+        hasMore = files.length === 100; // If we got exactly 100, there might be more
+        page++;
       }
       
-      const files = await response.json();
-      console.log(`[PR Lang Stats] Fetched ${files.length} files from API`);
+      console.log(`[PR Lang Stats] Total files from API: ${allFiles.length}`);
       
       this.languageStats.clear();
       
       // Calculate stats from API data
-      for (const file of files) {
+      for (const file of allFiles) {
         const language = this.detectLanguageFromFilename(file.filename);
         const stats = this.calculateFileStats(file);
         

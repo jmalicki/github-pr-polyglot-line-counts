@@ -9,10 +9,55 @@ class GitHubPRLanguageStats {
   }
 
   async init() {
-    // Wait for GitHub's page to be fully loaded
+    // Early initialization: detect languages from file tree ASAP to reserve space
+    await this.quickDetectLanguages();
+    
+    // Wait for full page load and stats
     await this.waitForPRPage();
     await this.analyze();
     this.setupDOMObserver();
+  }
+
+  async quickDetectLanguages() {
+    // Find file tree items that load immediately (before full diffs)
+    return new Promise((resolve) => {
+      const checkInterval = setInterval(() => {
+        // File tree sidebar loads first
+        const treeItems = document.querySelectorAll('[data-tagsearch-path], [data-path]');
+        
+        if (treeItems.length > 0) {
+          clearInterval(checkInterval);
+          console.log(`[PR Lang Stats] Quick scan: found ${treeItems.length} files in tree`);
+          
+          // Detect languages and create empty table structure
+          const languages = new Set();
+          treeItems.forEach(item => {
+            const path = item.getAttribute('data-tagsearch-path') || 
+                        item.getAttribute('data-path');
+            if (path) {
+              const language = this.detectLanguageFromFilename(path);
+              languages.add(language);
+            }
+          });
+          
+          // Initialize stats with zero values for detected languages
+          languages.forEach(lang => {
+            this.languageStats.set(lang, { added: 0, removed: 0, files: 0 });
+          });
+          
+          // Display the panel structure immediately (prevents layout shift)
+          this.displayStats();
+          console.log(`[PR Lang Stats] Created placeholder table for ${languages.size} languages`);
+          resolve();
+        }
+      }, 100); // Check more frequently for early detection
+      
+      // Don't wait forever
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        resolve();
+      }, 3000);
+    });
   }
 
   waitForPRPage() {
@@ -281,10 +326,14 @@ class GitHubPRLanguageStats {
   }
 
   displayStats() {
-    // Remove existing stats panel if present
+    // Update existing panel if present, otherwise create new one
     const existingPanel = document.getElementById('pr-language-stats-panel');
+    
     if (existingPanel) {
-      existingPanel.remove();
+      // Update existing panel content (avoids layout shift)
+      const newPanel = this.createStatsPanel();
+      existingPanel.innerHTML = newPanel.innerHTML;
+      return;
     }
 
     // Find the PR header area to insert our stats

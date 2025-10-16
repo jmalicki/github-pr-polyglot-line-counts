@@ -6,9 +6,20 @@ class GitHubPRLanguageStats {
     this.prData = null;
     this.languageStats = new Map();
     this.observer = null;
+    this.excludeGenerated = false; // Default: show all files
   }
 
   async init() {
+    // Load saved preferences
+    try {
+      const savedPreference = localStorage.getItem('pr-lang-stats-exclude-generated');
+      if (savedPreference !== null) {
+        this.excludeGenerated = savedPreference === 'true';
+      }
+    } catch (e) {
+      console.warn('[PR Lang Stats] Could not load preferences:', e);
+    }
+    
     // Early initialization: detect languages from file tree ASAP to reserve space
     await this.quickDetectLanguages();
     
@@ -209,7 +220,15 @@ class GitHubPRLanguageStats {
     
     console.log('[PR Lang Stats] Found', fileContainers.length, 'file containers');
     
+    let skippedGenerated = 0;
+    
     for (const container of fileContainers) {
+      // Skip generated files if filter is enabled
+      if (this.excludeGenerated && this.isGeneratedFile(container)) {
+        skippedGenerated++;
+        continue;
+      }
+      
       const fileInfo = this.extractFileInfo(container);
       if (!fileInfo) continue;
 
@@ -226,8 +245,32 @@ class GitHubPRLanguageStats {
       langStats.files += 1;
     }
 
+    if (skippedGenerated > 0) {
+      console.log(`[PR Lang Stats] Skipped ${skippedGenerated} generated file(s)`);
+    }
+    
     console.log('[PR Lang Stats] Language stats:', Array.from(this.languageStats.entries()));
     this.displayStats();
+  }
+
+  isGeneratedFile(container) {
+    // Method 1: GitHub collapses generated files with Details--collapsed class
+    if (container.classList.contains('Details--collapsed')) {
+      return true;
+    }
+    
+    // Method 2: Check for "Load diff" button (lazy-loaded generated files)
+    const text = container.textContent;
+    if (text.includes('Load diff') || text.includes('Large diffs are not rendered by default')) {
+      return true;
+    }
+    
+    // Method 3: Check for explicit markers in text
+    if (text.includes('Binary file') || text.includes('File renamed without changes')) {
+      return true;
+    }
+    
+    return false;
   }
 
   extractFileInfo(container) {
@@ -369,10 +412,50 @@ class GitHubPRLanguageStats {
     panel.id = 'pr-language-stats-panel';
     panel.className = 'border rounded-2 p-3 mb-3';
 
+    // Header with filter toggle
+    const headerContainer = document.createElement('div');
+    headerContainer.className = 'd-flex flex-justify-between flex-items-center mb-2';
+    
     const header = document.createElement('h3');
-    header.className = 'h5 mb-2';
+    header.className = 'h5 mb-0';
     header.innerHTML = '📊 Language Statistics';
-    panel.appendChild(header);
+    headerContainer.appendChild(header);
+    
+    // Toggle for excluding generated files
+    const filterContainer = document.createElement('div');
+    filterContainer.className = 'd-flex flex-items-center';
+    
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.id = 'exclude-generated-checkbox';
+    checkbox.checked = this.excludeGenerated;
+    checkbox.className = 'mr-1';
+    checkbox.style.cursor = 'pointer';
+    
+    const label = document.createElement('label');
+    label.htmlFor = 'exclude-generated-checkbox';
+    label.className = 'text-small';
+    label.textContent = 'Exclude generated';
+    label.style.cursor = 'pointer';
+    label.style.userSelect = 'none';
+    
+    checkbox.addEventListener('change', () => {
+      this.excludeGenerated = checkbox.checked;
+      // Save preference
+      try {
+        localStorage.setItem('pr-lang-stats-exclude-generated', checkbox.checked);
+      } catch (e) {
+        console.warn('Could not save preference:', e);
+      }
+      // Re-analyze with new filter
+      this.analyze();
+    });
+    
+    filterContainer.appendChild(checkbox);
+    filterContainer.appendChild(label);
+    headerContainer.appendChild(filterContainer);
+    
+    panel.appendChild(headerContainer);
 
     const table = document.createElement('table');
     table.className = 'language-stats-table';
@@ -452,7 +535,56 @@ class GitHubPRLanguageStats {
   }
 }
 
-// Initialize when DOM is ready
+// Inject placeholder skeleton IMMEDIATELY (synchronous) to prevent layout shift
+function injectPlaceholderSkeleton() {
+  // Check if we're on a PR page
+  if (!window.location.pathname.match(/\/pull\/\d+/)) return;
+  
+  // Try to find PR header immediately
+  const findAndInject = () => {
+    const prHeader = document.querySelector('.gh-header-meta, [data-hpc]');
+    if (prHeader && !document.getElementById('pr-language-stats-panel')) {
+      // Create minimal skeleton placeholder
+      const skeleton = document.createElement('div');
+      skeleton.id = 'pr-language-stats-panel';
+      skeleton.className = 'border rounded-2 p-3 mb-3';
+      skeleton.style.minHeight = '100px'; // Reserve space immediately
+      skeleton.innerHTML = `
+        <div class="d-flex flex-justify-between flex-items-center mb-2">
+          <h3 class="h5 mb-0">📊 Language Statistics</h3>
+          <div class="text-small color-fg-muted">Loading...</div>
+        </div>
+      `;
+      prHeader.parentNode.insertBefore(skeleton, prHeader.nextSibling);
+      console.log('[PR Lang Stats] Skeleton injected immediately');
+      return true;
+    }
+    return false;
+  };
+
+  // Try immediately
+  if (findAndInject()) return;
+
+  // If not found, watch for it (but still synchronous, just observing)
+  const observer = new MutationObserver(() => {
+    if (findAndInject()) {
+      observer.disconnect();
+    }
+  });
+
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+
+  // Stop observing after 3 seconds
+  setTimeout(() => observer.disconnect(), 3000);
+}
+
+// Run skeleton injection immediately (before any async ops)
+injectPlaceholderSkeleton();
+
+// Initialize full stats (async)
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     new GitHubPRLanguageStats().init();

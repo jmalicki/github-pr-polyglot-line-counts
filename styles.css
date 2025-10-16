@@ -4,6 +4,12 @@
   background-color: var(--bgColor-muted, #f6f8fa);
   border-color: var(--borderColor-default, #d0d7de) !important;
   margin-top: 16px;
+  /* Smooth transition when content updates */
+  transition: min-height 0.2s ease;
+  /* Prevent flash of empty space */
+  min-height: 100px;
+  /* Ensure space is reserved immediately */
+  contain: layout;
 }
 
 .language-stats-table {

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GitHub PR Language Stats",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Shows line count statistics by programming language for GitHub pull requests",
   "permissions": [
     "storage"

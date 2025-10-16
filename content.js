@@ -90,19 +90,38 @@ class GitHubPRLanguageStats {
 
   waitForPRPage() {
     return new Promise((resolve) => {
+      let lastCount = 0;
+      let stableCount = 0;
+      
       const checkInterval = setInterval(() => {
         // Wait for file containers to be present (modern GitHub)
         const fileContainers = document.querySelectorAll('[data-details-container-group="file"]');
+        const currentCount = fileContainers.length;
+        
+        // Check if count is stable (hasn't changed for 2 checks = 1 second)
+        if (currentCount > 0) {
+          if (currentCount === lastCount) {
+            stableCount++;
+            
+            // If count has been stable for 2 checks (1 second), we're done
+            if (stableCount >= 2) {
+              clearInterval(checkInterval);
+              console.log(`[PR Lang Stats] Found ${currentCount} file containers (stable), starting analysis...`);
+              resolve();
+              return;
+            }
+          } else {
+            // Count changed, reset stability counter
+            stableCount = 0;
+            lastCount = currentCount;
+            console.log(`[PR Lang Stats] Detected ${currentCount} files, waiting for more...`);
+          }
+        }
         
         // Fallback: Check for either old or new GitHub UI
         const diffContainer = document.querySelector('.diff-view, .js-diff-progressive-container, [data-hpc], .file-header, .file');
-        
-        // Resolve when we have containers with content
-        if (fileContainers.length > 0) {
-          clearInterval(checkInterval);
-          console.log(`[PR Lang Stats] Found ${fileContainers.length} file containers, starting analysis...`);
-          resolve();
-        } else if (diffContainer) {
+        if (diffContainer && currentCount === 0) {
+          // Old UI detected, proceed immediately
           clearInterval(checkInterval);
           console.log('[PR Lang Stats] PR page detected (fallback selector), starting analysis...');
           resolve();
@@ -112,7 +131,7 @@ class GitHubPRLanguageStats {
       // Timeout after 10 seconds
       setTimeout(() => {
         clearInterval(checkInterval);
-        console.warn('[PR Lang Stats] Timeout waiting for PR page, attempting analysis anyway...');
+        console.warn('[PR Lang Stats] Timeout waiting for stable file count, attempting analysis anyway...');
         resolve();
       }, 10000);
     });
@@ -250,7 +269,70 @@ class GitHubPRLanguageStats {
     }
     
     console.log('[PR Lang Stats] Language stats:', Array.from(this.languageStats.entries()));
+    
+    // Calculate estimated review time
+    this.estimatedReviewTime = this.calculateReviewTime();
+    
     this.displayStats();
+  }
+
+  calculateReviewTime() {
+    // Research-based formula: ~150-200 lines/minute for code review
+    // Source: Various studies on code review effectiveness
+    
+    const BASE_REVIEW_RATE = 175; // lines per minute (middle ground)
+    
+    // Language complexity multipliers (harder languages take longer)
+    const COMPLEXITY_MULTIPLIERS = {
+      'Rust': 1.5,
+      'C': 1.4,
+      'C++': 1.4,
+      'Go': 1.3,
+      'Java': 1.2,
+      'Python': 1.0,
+      'JavaScript': 1.0,
+      'TypeScript': 1.1,
+      'HTML': 0.7,
+      'CSS': 0.7,
+      'Markdown': 0.5,
+      'JSON': 0.3,
+      'YAML': 0.3,
+      'Other': 1.0
+    };
+    
+    let totalMinutes = 0;
+    let largeFileCount = 0;
+    
+    for (const [language, stats] of this.languageStats.entries()) {
+      const linesChanged = stats.added + stats.removed;
+      const multiplier = COMPLEXITY_MULTIPLIERS[language] || 1.0;
+      
+      // Base time for this language
+      const languageMinutes = (linesChanged / BASE_REVIEW_RATE) * multiplier;
+      totalMinutes += languageMinutes;
+      
+      // Count large files (>500 lines changed = needs extra attention)
+      if (linesChanged > 500) {
+        largeFileCount++;
+      }
+    }
+    
+    // Add overhead for large files (context switching, complexity)
+    if (largeFileCount > 0) {
+      totalMinutes += largeFileCount * 5; // 5 min overhead per large file
+    }
+    
+    // Minimum review time (even small PRs need some time)
+    totalMinutes = Math.max(totalMinutes, 2);
+    
+    // Add buffer for discussion, questions, testing (20% overhead)
+    totalMinutes *= 1.2;
+    
+    return {
+      min: Math.floor(totalMinutes * 0.8), // Conservative estimate
+      max: Math.ceil(totalMinutes * 1.2),  // Generous estimate
+      largeFiles: largeFileCount
+    };
   }
 
   isGeneratedFile(container) {
@@ -416,10 +498,32 @@ class GitHubPRLanguageStats {
     const headerContainer = document.createElement('div');
     headerContainer.className = 'd-flex flex-justify-between flex-items-center mb-2';
     
+    const headerLeft = document.createElement('div');
+    
     const header = document.createElement('h3');
     header.className = 'h5 mb-0';
     header.innerHTML = '📊 Language Statistics';
-    headerContainer.appendChild(header);
+    headerLeft.appendChild(header);
+    
+    // Add estimated review time if available
+    if (this.estimatedReviewTime) {
+      const reviewTime = document.createElement('div');
+      reviewTime.className = 'text-small color-fg-muted mt-1';
+      const timeRange = this.estimatedReviewTime.min === this.estimatedReviewTime.max
+        ? `~${this.estimatedReviewTime.min} min`
+        : `${this.estimatedReviewTime.min}-${this.estimatedReviewTime.max} min`;
+      
+      reviewTime.innerHTML = `📝 Est. Review Time: ${timeRange}`;
+      
+      // Add tooltip/warning for large files
+      if (this.estimatedReviewTime.largeFiles > 0) {
+        reviewTime.innerHTML += ` <span title="${this.estimatedReviewTime.largeFiles} large file(s) - needs extra attention">⚠️</span>`;
+      }
+      
+      headerLeft.appendChild(reviewTime);
+    }
+    
+    headerContainer.appendChild(headerLeft);
     
     // Toggle for excluding generated files
     const filterContainer = document.createElement('div');

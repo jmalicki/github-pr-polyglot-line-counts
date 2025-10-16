@@ -171,18 +171,9 @@ class GitHubPRLanguageStats {
     
     const prInfo = this.extractPRInfo();
     
-    // For large PRs, use GitHub API instead of DOM scraping
-    // (GitHub lazy-loads files, so DOM scraping will miss most files)
-    const useAPI = await this.shouldUseAPI(prInfo);
-    
-    if (useAPI) {
-      console.log('[PR Lang Stats] Large PR detected, using GitHub API...');
-      await this.analyzeViaAPI(prInfo);
-      return;
-    }
-    
-    // Use DOM scraping for normal-sized PRs
-    await this.analyzeViaDOM();
+    // Always use GitHub API - it's more reliable than DOM scraping
+    // Only falls back to DOM if API fails (rate limit, network error, etc.)
+    await this.analyzeViaAPI(prInfo);
   }
 
   calculateReviewTime() {
@@ -593,11 +584,28 @@ class GitHubPRLanguageStats {
         const response = await fetch(url);
         
         if (!response.ok) {
-          console.warn('[PR Lang Stats] API request failed, falling back to DOM');
+          // Check for rate limit
+          if (response.status === 403 || response.status === 429) {
+            const errorData = await response.json().catch(() => ({}));
+            const message = errorData.message || 'Rate limit exceeded';
+            console.warn(`[PR Lang Stats] ${message}`);
+            this.showRateLimitError(message);
+            return; // Don't fallback to DOM - show error instead
+          }
+          
+          console.warn(`[PR Lang Stats] API request failed (${response.status}), falling back to DOM`);
           return this.analyzeViaDOM();
         }
         
         const files = await response.json();
+        
+        // Check if response is an error object
+        if (files.message && files.message.includes('rate limit')) {
+          console.warn('[PR Lang Stats] Rate limit hit');
+          this.showRateLimitError(files.message);
+          return;
+        }
+        
         allFiles = allFiles.concat(files);
         
         console.log(`[PR Lang Stats] Fetched page ${page}: ${files.length} files (total: ${allFiles.length})`);
@@ -637,9 +645,28 @@ class GitHubPRLanguageStats {
       
     } catch (error) {
       console.error('[PR Lang Stats] API analysis failed:', error);
-      // Fallback to DOM scraping
-      this.analyzeViaDOM();
+      this.showError('Failed to analyze PR. Try refreshing the page.');
     }
+  }
+
+  showRateLimitError(message) {
+    this.showError(`GitHub API rate limit reached. ${message}. Try again in an hour or refresh the page.`);
+  }
+
+  showError(message) {
+    const panel = document.getElementById('pr-language-stats-panel');
+    if (!panel) return;
+    
+    panel.innerHTML = `
+      <div class="d-flex flex-justify-between flex-items-center mb-2">
+        <h3 class="h5 mb-0">📊 Language Statistics</h3>
+      </div>
+      <div class="flash flash-error">
+        <strong>⚠️ Error:</strong> ${message}
+      </div>
+    `;
+    
+    console.log('[PR Lang Stats] Showing error:', message);
   }
 
   async analyzeViaDOM() {

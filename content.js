@@ -7,6 +7,7 @@ class GitHubPRLanguageStats {
     this.languageStats = new Map();
     this.observer = null;
     this.excludeGenerated = false; // Default: show all files
+    this.renderStage = 0; // Track render stages: 0=none, 1=skeleton, 2=structure, 3=complete
   }
 
   async init() {
@@ -20,72 +21,13 @@ class GitHubPRLanguageStats {
       console.warn('[PR Lang Stats] Could not load preferences:', e);
     }
     
-    // Early initialization: detect languages from file tree ASAP to reserve space
-    await this.quickDetectLanguages();
-    
-    // Wait for full page load and stats
+    // Wait for full page load (skip early detection - causes flickering)
     await this.waitForPRPage();
+    
+    // Analyze and render ONCE with complete data
     await this.analyze();
+    
     this.setupDOMObserver();
-  }
-
-  async quickDetectLanguages() {
-    // Find file tree items that load immediately (before full diffs)
-    return new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        // File tree sidebar loads first
-        const treeItems = document.querySelectorAll('[data-tagsearch-path], [data-path]');
-        
-        if (treeItems.length > 0) {
-          clearInterval(checkInterval);
-          console.log(`[PR Lang Stats] Quick scan: found ${treeItems.length} files in tree`);
-          
-          // Step 1: Extract totals immediately from tree text
-          let totalAdded = 0;
-          let totalRemoved = 0;
-          const languages = new Set();
-          
-          treeItems.forEach(item => {
-            const text = item.textContent;
-            const path = item.getAttribute('data-tagsearch-path') || 
-                        item.getAttribute('data-path');
-            
-            // Parse totals from text like "325 additions & 0 deletions"
-            const statsPattern = /(\d+)\s+addition(?:s)?\s+&\s+(\d+)\s+deletion(?:s)?/;
-            const match = text.match(statsPattern);
-            if (match) {
-              totalAdded += parseInt(match[1]);
-              totalRemoved += parseInt(match[2]);
-            }
-            
-            // Detect language
-            if (path) {
-              const language = this.detectLanguageFromFilename(path);
-              languages.add(language);
-            }
-          });
-          
-          // Initialize with totals but zero per-language (will be filled later)
-          languages.forEach(lang => {
-            this.languageStats.set(lang, { added: 0, removed: 0, files: 0 });
-          });
-          
-          // Store totals temporarily for display
-          this.earlyTotals = { totalAdded, totalRemoved };
-          
-          // Display panel with totals immediately (zero layout shift!)
-          this.displayStats();
-          console.log(`[PR Lang Stats] Showing early totals: +${totalAdded} -${totalRemoved}, ${languages.size} languages detected`);
-          resolve();
-        }
-      }, 100); // Check more frequently for early detection
-      
-      // Don't wait forever
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve();
-      }, 3000);
-    });
   }
 
   waitForPRPage() {
@@ -273,7 +215,9 @@ class GitHubPRLanguageStats {
     // Calculate estimated review time
     this.estimatedReviewTime = this.calculateReviewTime();
     
+    // Render ONCE with all final data
     this.displayStats();
+    console.log('[PR Lang Stats] Rendered with complete data and review time');
   }
 
   calculateReviewTime() {
@@ -468,17 +412,25 @@ class GitHubPRLanguageStats {
   }
 
   displayStats() {
-    // Update existing panel if present, otherwise create new one
+    // ONLY update existing panel, NEVER create a new one
+    // (Skeleton already created synchronously at page load)
     const existingPanel = document.getElementById('pr-language-stats-panel');
     
     if (existingPanel) {
-      // Update existing panel content (avoids layout shift)
+      // Hide panel, update content, then show (atomic visual update)
+      existingPanel.style.opacity = '0';
+      
       const newPanel = this.createStatsPanel();
       existingPanel.innerHTML = newPanel.innerHTML;
+      
+      // Force reflow before showing (ensures content is laid out)
+      void existingPanel.offsetHeight;
+      
+      existingPanel.style.opacity = '1';
       return;
     }
 
-    // Find the PR header area to insert our stats
+    // Fallback: If skeleton wasn't created, create panel now
     const prHeader = document.querySelector('.gh-header-meta');
     if (!prHeader) {
       console.warn('Could not find PR header to insert stats');
@@ -486,7 +438,13 @@ class GitHubPRLanguageStats {
     }
 
     const statsPanel = this.createStatsPanel();
+    statsPanel.style.opacity = '0';
     prHeader.parentNode.insertBefore(statsPanel, prHeader.nextSibling);
+    
+    // Reveal after insertion
+    requestAnimationFrame(() => {
+      statsPanel.style.opacity = '1';
+    });
   }
 
   createStatsPanel() {
@@ -583,51 +541,64 @@ class GitHubPRLanguageStats {
     const sortedLanguages = Array.from(this.languageStats.entries())
       .sort((a, b) => (b[1].added + b[1].removed) - (a[1].added + a[1].removed));
 
-    // Create table rows (show placeholder if we only have language names, not stats yet)
+    // Build ALL rows as HTML string first (prevents incremental rendering)
     const hasDetailedStats = sortedLanguages.some(([, stats]) => stats.added > 0 || stats.removed > 0);
+    let tableHTML = '';
     
     for (const [language, stats] of sortedLanguages) {
-      const row = document.createElement('tr');
-      
       const percentage = totalAdded + totalRemoved > 0 && hasDetailedStats
         ? ((stats.added + stats.removed) / (totalAdded + totalRemoved) * 100).toFixed(1)
         : '...';
 
       const filesDisplay = stats.files > 0 ? `${stats.files} file${stats.files > 1 ? 's' : ''}` : '...';
 
-      row.innerHTML = `
-        <td class="language-name">${language}</td>
-        <td class="language-files">${filesDisplay}</td>
-        <td class="language-added">+${stats.added}</td>
-        <td class="language-removed">-${stats.removed}</td>
-        <td class="language-percentage">${percentage}${percentage === '...' ? '' : '%'}</td>
+      tableHTML += `
+        <tr>
+          <td class="language-name">${language}</td>
+          <td class="language-files">${filesDisplay}</td>
+          <td class="language-added">+${stats.added}</td>
+          <td class="language-removed">-${stats.removed}</td>
+          <td class="language-percentage">${percentage}${percentage === '...' ? '' : '%'}</td>
+        </tr>
       `;
-      table.appendChild(row);
     }
 
     // Add totals row
-    const totalRow = document.createElement('tr');
-    totalRow.className = 'total-row';
-    totalRow.innerHTML = `
-      <td class="language-name"><strong>Total</strong></td>
-      <td class="language-files"></td>
-      <td class="language-added"><strong>+${totalAdded}</strong></td>
-      <td class="language-removed"><strong>-${totalRemoved}</strong></td>
-      <td class="language-percentage"><strong>100%</strong></td>
+    tableHTML += `
+      <tr class="total-row">
+        <td class="language-name"><strong>Total</strong></td>
+        <td class="language-files"></td>
+        <td class="language-added"><strong>+${totalAdded}</strong></td>
+        <td class="language-removed"><strong>-${totalRemoved}</strong></td>
+        <td class="language-percentage"><strong>100%</strong></td>
+      </tr>
     `;
-    table.appendChild(totalRow);
-
+    
+    // Set all at once (atomic, no intermediate paints)
+    table.innerHTML = tableHTML;
     panel.appendChild(table);
     return panel;
   }
 
   setupDOMObserver() {
     // Watch for PR page changes (e.g., switching tabs, lazy loading)
-    this.observer = new MutationObserver(() => {
-      // Use data attributes for more reliable detection
+    // But IGNORE changes inside our own panel to prevent re-render loops
+    this.observer = new MutationObserver((mutations) => {
+      // Skip mutations that are just our own panel updates
+      const isOurOwnUpdate = mutations.every(mutation => {
+        const target = mutation.target;
+        const panel = document.getElementById('pr-language-stats-panel');
+        return panel && (target === panel || panel.contains(target));
+      });
+      
+      if (isOurOwnUpdate) {
+        return; // Don't re-analyze for our own changes
+      }
+      
       const diffView = document.querySelector('[data-tagsearch-path], [data-hpc], .file-header');
       if (diffView && !document.getElementById('pr-language-stats-panel')) {
         console.log('[PR Lang Stats] DOM changed, re-analyzing...');
+        this.renderStage = 0;
         this.analyze();
       }
     });
@@ -639,6 +610,9 @@ class GitHubPRLanguageStats {
   }
 }
 
+// Global reference to the extension instance
+let extensionInstance = null;
+
 // Inject placeholder skeleton IMMEDIATELY (synchronous) to prevent layout shift
 function injectPlaceholderSkeleton() {
   // Check if we're on a PR page
@@ -648,19 +622,19 @@ function injectPlaceholderSkeleton() {
   const findAndInject = () => {
     const prHeader = document.querySelector('.gh-header-meta, [data-hpc]');
     if (prHeader && !document.getElementById('pr-language-stats-panel')) {
-      // Create minimal skeleton placeholder
+      // Create minimal skeleton placeholder - reserves space immediately
       const skeleton = document.createElement('div');
       skeleton.id = 'pr-language-stats-panel';
       skeleton.className = 'border rounded-2 p-3 mb-3';
-      skeleton.style.minHeight = '100px'; // Reserve space immediately
+      skeleton.style.minHeight = '120px'; // Reserve space immediately
       skeleton.innerHTML = `
         <div class="d-flex flex-justify-between flex-items-center mb-2">
           <h3 class="h5 mb-0">📊 Language Statistics</h3>
-          <div class="text-small color-fg-muted">Loading...</div>
+          <div class="text-small color-fg-muted">Analyzing...</div>
         </div>
       `;
       prHeader.parentNode.insertBefore(skeleton, prHeader.nextSibling);
-      console.log('[PR Lang Stats] Skeleton injected immediately');
+      console.log('[PR Lang Stats] Skeleton placeholder injected');
       return true;
     }
     return false;
@@ -691,9 +665,11 @@ injectPlaceholderSkeleton();
 // Initialize full stats (async)
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
-    new GitHubPRLanguageStats().init();
+    extensionInstance = new GitHubPRLanguageStats();
+    extensionInstance.init();
   });
 } else {
-  new GitHubPRLanguageStats().init();
+  extensionInstance = new GitHubPRLanguageStats();
+  extensionInstance.init();
 }
 

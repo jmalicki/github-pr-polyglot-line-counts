@@ -4,12 +4,14 @@
   background-color: var(--bgColor-muted, #f6f8fa);
   border-color: var(--borderColor-default, #d0d7de) !important;
   margin-top: 16px;
-  /* Smooth transition when content updates */
-  transition: min-height 0.2s ease;
+  /* Smooth fade-in when content appears */
+  transition: opacity 0.15s ease-in;
   /* Prevent flash of empty space */
-  min-height: 100px;
+  min-height: 120px;
   /* Ensure space is reserved immediately */
   contain: layout;
+  /* Start with full opacity (will be controlled by JS) */
+  opacity: 1;
 }
 
 .language-stats-table {

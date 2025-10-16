@@ -29,25 +29,42 @@ class GitHubPRLanguageStats {
           clearInterval(checkInterval);
           console.log(`[PR Lang Stats] Quick scan: found ${treeItems.length} files in tree`);
           
-          // Detect languages and create empty table structure
+          // Step 1: Extract totals immediately from tree text
+          let totalAdded = 0;
+          let totalRemoved = 0;
           const languages = new Set();
+          
           treeItems.forEach(item => {
+            const text = item.textContent;
             const path = item.getAttribute('data-tagsearch-path') || 
                         item.getAttribute('data-path');
+            
+            // Parse totals from text like "325 additions & 0 deletions"
+            const statsPattern = /(\d+)\s+addition(?:s)?\s+&\s+(\d+)\s+deletion(?:s)?/;
+            const match = text.match(statsPattern);
+            if (match) {
+              totalAdded += parseInt(match[1]);
+              totalRemoved += parseInt(match[2]);
+            }
+            
+            // Detect language
             if (path) {
               const language = this.detectLanguageFromFilename(path);
               languages.add(language);
             }
           });
           
-          // Initialize stats with zero values for detected languages
+          // Initialize with totals but zero per-language (will be filled later)
           languages.forEach(lang => {
             this.languageStats.set(lang, { added: 0, removed: 0, files: 0 });
           });
           
-          // Display the panel structure immediately (prevents layout shift)
+          // Store totals temporarily for display
+          this.earlyTotals = { totalAdded, totalRemoved };
+          
+          // Display panel with totals immediately (zero layout shift!)
           this.displayStats();
-          console.log(`[PR Lang Stats] Created placeholder table for ${languages.size} languages`);
+          console.log(`[PR Lang Stats] Showing early totals: +${totalAdded} -${totalRemoved}, ${languages.size} languages detected`);
           resolve();
         }
       }, 100); // Check more frequently for early detection
@@ -360,32 +377,43 @@ class GitHubPRLanguageStats {
     const table = document.createElement('table');
     table.className = 'language-stats-table';
     
-    // Calculate totals
+    // Calculate totals (use early totals if available for progressive display)
     let totalAdded = 0;
     let totalRemoved = 0;
+    
     this.languageStats.forEach(stats => {
       totalAdded += stats.added;
       totalRemoved += stats.removed;
     });
+    
+    // If we have early totals but no detailed stats yet, use early totals
+    if (totalAdded === 0 && totalRemoved === 0 && this.earlyTotals) {
+      totalAdded = this.earlyTotals.totalAdded;
+      totalRemoved = this.earlyTotals.totalRemoved;
+    }
 
     // Sort languages by total lines changed
     const sortedLanguages = Array.from(this.languageStats.entries())
       .sort((a, b) => (b[1].added + b[1].removed) - (a[1].added + a[1].removed));
 
-    // Create table rows
+    // Create table rows (show placeholder if we only have language names, not stats yet)
+    const hasDetailedStats = sortedLanguages.some(([, stats]) => stats.added > 0 || stats.removed > 0);
+    
     for (const [language, stats] of sortedLanguages) {
       const row = document.createElement('tr');
       
-      const percentage = totalAdded + totalRemoved > 0 
+      const percentage = totalAdded + totalRemoved > 0 && hasDetailedStats
         ? ((stats.added + stats.removed) / (totalAdded + totalRemoved) * 100).toFixed(1)
-        : 0;
+        : '...';
+
+      const filesDisplay = stats.files > 0 ? `${stats.files} file${stats.files > 1 ? 's' : ''}` : '...';
 
       row.innerHTML = `
         <td class="language-name">${language}</td>
-        <td class="language-files">${stats.files} file${stats.files > 1 ? 's' : ''}</td>
+        <td class="language-files">${filesDisplay}</td>
         <td class="language-added">+${stats.added}</td>
         <td class="language-removed">-${stats.removed}</td>
-        <td class="language-percentage">${percentage}%</td>
+        <td class="language-percentage">${percentage}${percentage === '...' ? '' : '%'}</td>
       `;
       table.appendChild(row);
     }

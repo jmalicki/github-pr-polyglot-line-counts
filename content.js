@@ -167,72 +167,22 @@ class GitHubPRLanguageStats {
   }
 
   async analyze() {
+    console.log('[PR Lang Stats] ═══ ANALYZE START ═══');
+    
     const prInfo = this.extractPRInfo();
-    this.languageStats.clear();
-
-    // Lock scroll position during analysis (prevent GitHub lazy-load from scrolling)
-    const originalScrollY = window.scrollY;
-    const originalScrollX = window.scrollX;
-    const originalScrollBehavior = document.documentElement.style.scrollBehavior;
-    document.documentElement.style.scrollBehavior = 'auto'; // Disable smooth scroll
-
-    try {
-      // Modern GitHub uses .file-info containers with data-details-container-group="file"
-      // These contain both the filename and the diff/stats
-      let fileContainers = document.querySelectorAll('[data-details-container-group="file"]');
-      
-      // Fallback to old selectors if new ones not found
-      if (fileContainers.length === 0) {
-        fileContainers = document.querySelectorAll('.file');
-      }
-      
-      console.log('[PR Lang Stats] Found', fileContainers.length, 'file containers');
-      
-      let skippedGenerated = 0;
     
-    for (const container of fileContainers) {
-      // Skip generated files if filter is enabled
-      if (this.excludeGenerated && this.isGeneratedFile(container)) {
-        skippedGenerated++;
-        continue;
-      }
-      
-      const fileInfo = this.extractFileInfo(container);
-      if (!fileInfo) continue;
-
-      const language = this.detectLanguageFromFilename(fileInfo.filename);
-      const stats = this.calculateFileStats(container);
-
-      if (!this.languageStats.has(language)) {
-        this.languageStats.set(language, { added: 0, removed: 0, files: 0 });
-      }
-
-      const langStats = this.languageStats.get(language);
-      langStats.added += stats.added;
-      langStats.removed += stats.removed;
-      langStats.files += 1;
-    }
-
-    if (skippedGenerated > 0) {
-      console.log(`[PR Lang Stats] Skipped ${skippedGenerated} generated file(s)`);
+    // For large PRs, use GitHub API instead of DOM scraping
+    // (GitHub lazy-loads files, so DOM scraping will miss most files)
+    const useAPI = await this.shouldUseAPI(prInfo);
+    
+    if (useAPI) {
+      console.log('[PR Lang Stats] Large PR detected, using GitHub API...');
+      await this.analyzeViaAPI(prInfo);
+      return;
     }
     
-      console.log('[PR Lang Stats] Language stats:', Array.from(this.languageStats.entries()));
-      
-      // Calculate estimated review time
-      this.estimatedReviewTime = this.calculateReviewTime();
-      
-      // Render ONCE with all final data
-      this.displayStats();
-      console.log('[PR Lang Stats] Rendered with complete data and review time');
-      
-    } finally {
-      // Restore scroll behavior
-      document.documentElement.style.scrollBehavior = originalScrollBehavior;
-      
-      // Force scroll back to original position
-      window.scrollTo(originalScrollX, originalScrollY);
-    }
+    // Use DOM scraping for normal-sized PRs
+    await this.analyzeViaDOM();
   }
 
   calculateReviewTime() {
@@ -369,8 +319,19 @@ class GitHubPRLanguageStats {
     return { filename };
   }
 
-  calculateFileStats(fileElement) {
+  calculateFileStats(fileElementOrAPIData) {
     const stats = { added: 0, removed: 0 };
+    
+    // If this is API data (has 'additions' property), use it directly
+    if (typeof fileElementOrAPIData === 'object' && 'additions' in fileElementOrAPIData) {
+      return {
+        added: fileElementOrAPIData.additions,
+        removed: fileElementOrAPIData.deletions
+      };
+    }
+    
+    // Otherwise, it's a DOM element - parse from text
+    const fileElement = fileElementOrAPIData;
     
     // Method 1: Parse from text (modern GitHub format)
     // Format: "325 changes: 325 additions & 0 deletions" or "118 changes: 62 additions & 56 deletions"
@@ -427,25 +388,24 @@ class GitHubPRLanguageStats {
   }
 
   displayStats() {
+    console.log('[PR Lang Stats] >>> displayStats() called');
+    
     // ONLY update existing panel, NEVER create a new one
     // (Skeleton already created synchronously at page load)
     const existingPanel = document.getElementById('pr-language-stats-panel');
     
     if (existingPanel) {
+      console.log('[PR Lang Stats] >>> Updating existing panel');
+      
       // Save scroll position before updating
       const scrollY = window.scrollY;
       const scrollX = window.scrollX;
       
-      // Hide panel, update content, then show (atomic visual update)
-      existingPanel.style.opacity = '0';
-      
+      // Update content WITHOUT opacity tricks (they might be causing flicker)
       const newPanel = this.createStatsPanel();
       existingPanel.innerHTML = newPanel.innerHTML;
       
-      // Force reflow before showing (ensures content is laid out)
-      void existingPanel.offsetHeight;
-      
-      existingPanel.style.opacity = '1';
+      console.log('[PR Lang Stats] >>> Panel updated');
       
       // Restore scroll position (prevent jump)
       if (window.scrollY !== scrollY || window.scrollX !== scrollX) {
@@ -610,6 +570,134 @@ class GitHubPRLanguageStats {
     table.innerHTML = tableHTML;
     panel.appendChild(table);
     return panel;
+  }
+
+  async shouldUseAPI(prInfo) {
+    // Check if this is a large PR that will be lazy-loaded
+    // Look for GitHub's "Load diff" buttons or truncation messages
+    const loadButtons = document.querySelectorAll('button[aria-label*="Load diff"], button:has-text("Load diff")');
+    const truncationMsg = document.body.textContent.includes('Some files were not shown');
+    
+    return loadButtons.length > 0 || truncationMsg;
+  }
+
+  async analyzeViaAPI(prInfo) {
+    try {
+      // Fetch files from GitHub API
+      const url = `https://api.github.com/repos/${prInfo.owner}/${prInfo.repo}/pulls/${prInfo.prNumber}/files?per_page=100`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        console.warn('[PR Lang Stats] API request failed, falling back to DOM');
+        this.languageStats.clear();
+        return this.analyzeViaDOM();
+      }
+      
+      const files = await response.json();
+      console.log(`[PR Lang Stats] Fetched ${files.length} files from API`);
+      
+      this.languageStats.clear();
+      
+      // Calculate stats from API data
+      for (const file of files) {
+        const language = this.detectLanguageFromFilename(file.filename);
+        const stats = this.calculateFileStats(file);
+        
+        if (!this.languageStats.has(language)) {
+          this.languageStats.set(language, { added: 0, removed: 0, files: 0 });
+        }
+        
+        const langStats = this.languageStats.get(language);
+        langStats.added += file.additions;
+        langStats.removed += file.deletions;
+        langStats.files += 1;
+      }
+      
+      console.log('[PR Lang Stats] Language stats from API:', Array.from(this.languageStats.entries()));
+      
+      // Calculate estimated review time
+      this.estimatedReviewTime = this.calculateReviewTime();
+      
+      // Render with API data
+      this.displayStats();
+      console.log('[PR Lang Stats] ═══ ANALYZE COMPLETE (API) ═══');
+      
+    } catch (error) {
+      console.error('[PR Lang Stats] API analysis failed:', error);
+      // Fallback to DOM scraping
+      this.analyzeViaDOM();
+    }
+  }
+
+  async analyzeViaDOM() {
+    // Original DOM-based analysis (renamed from analyze())
+    console.log('[PR Lang Stats] Using DOM scraping...');
+    
+    this.languageStats.clear();
+
+    // Lock scroll position during analysis (prevent GitHub lazy-load from scrolling)
+    const originalScrollY = window.scrollY;
+    const originalScrollX = window.scrollX;
+    const originalScrollBehavior = document.documentElement.style.scrollBehavior;
+    document.documentElement.style.scrollBehavior = 'auto'; // Disable smooth scroll
+
+    try {
+      // Modern GitHub uses .file-info containers with data-details-container-group="file"
+      // These contain both the filename and the diff/stats
+      let fileContainers = document.querySelectorAll('[data-details-container-group="file"]');
+      
+      // Fallback to old selectors if new ones not found
+      if (fileContainers.length === 0) {
+        fileContainers = document.querySelectorAll('.file');
+      }
+      
+      console.log('[PR Lang Stats] Found', fileContainers.length, 'file containers (DOM)');
+      
+      let skippedGenerated = 0;
+    
+      for (const container of fileContainers) {
+        // Skip generated files if filter is enabled
+        if (this.excludeGenerated && this.isGeneratedFile(container)) {
+          skippedGenerated++;
+          continue;
+        }
+        
+        const fileInfo = this.extractFileInfo(container);
+        if (!fileInfo) continue;
+
+        const language = this.detectLanguageFromFilename(fileInfo.filename);
+        const stats = this.calculateFileStats(container);
+
+        if (!this.languageStats.has(language)) {
+          this.languageStats.set(language, { added: 0, removed: 0, files: 0 });
+        }
+
+        const langStats = this.languageStats.get(language);
+        langStats.added += stats.added;
+        langStats.removed += stats.removed;
+        langStats.files += 1;
+      }
+
+      if (skippedGenerated > 0) {
+        console.log(`[PR Lang Stats] Skipped ${skippedGenerated} generated file(s)`);
+      }
+      
+      console.log('[PR Lang Stats] Language stats (DOM):', Array.from(this.languageStats.entries()));
+      
+      // Calculate estimated review time
+      this.estimatedReviewTime = this.calculateReviewTime();
+      
+      // Render with DOM data
+      this.displayStats();
+      console.log('[PR Lang Stats] ═══ ANALYZE COMPLETE (DOM) ═══');
+      
+    } finally {
+      // Restore scroll behavior
+      document.documentElement.style.scrollBehavior = originalScrollBehavior;
+      
+      // Force scroll back to original position
+      window.scrollTo(originalScrollX, originalScrollY);
+    }
   }
 
   setupDOMObserver() {

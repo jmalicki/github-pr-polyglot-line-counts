@@ -30,8 +30,10 @@ async function testExtension() {
 
   // Launch browser with extension loaded
   console.log('📦 Loading extension from:', extensionPath);
+  const isHeadless = !process.env.HEADED; // Default to headless, set HEADED=1 to see browser
+  
   const browser = await puppeteer.launch({
-    headless: false, // Run in headed mode to see the extension in action
+    headless: isHeadless,
     args: [
       `--disable-extensions-except=${extensionPath}`,
       `--load-extension=${extensionPath}`,
@@ -40,6 +42,10 @@ async function testExtension() {
       '--window-size=1920,1080'
     ]
   });
+  
+  if (isHeadless) {
+    console.log('🤖 Running in headless mode (set HEADED=1 to see browser)');
+  }
 
   const page = await browser.newPage();
   await page.setViewport({ width: 1920, height: 1080 });

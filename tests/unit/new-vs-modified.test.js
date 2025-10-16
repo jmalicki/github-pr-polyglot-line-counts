@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { calculateLanguageStats, calculateTotals } from '../../lib/language-detector.js';
 
 describe('New vs Modified Files', () => {
-  it.skip('should correctly handle new files (additions only) in arsync PR #55 - SKIPPED: rate limit', async () => {
+  it('should correctly handle new files (additions only) in arsync PR #55', async () => {
     const filesResponse = await fetch('https://api.github.com/repos/jmalicki/arsync/pulls/55/files');
     const files = await filesResponse.json();
 

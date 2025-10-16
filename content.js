@@ -170,18 +170,25 @@ class GitHubPRLanguageStats {
     const prInfo = this.extractPRInfo();
     this.languageStats.clear();
 
-    // Modern GitHub uses .file-info containers with data-details-container-group="file"
-    // These contain both the filename and the diff/stats
-    let fileContainers = document.querySelectorAll('[data-details-container-group="file"]');
-    
-    // Fallback to old selectors if new ones not found
-    if (fileContainers.length === 0) {
-      fileContainers = document.querySelectorAll('.file');
-    }
-    
-    console.log('[PR Lang Stats] Found', fileContainers.length, 'file containers');
-    
-    let skippedGenerated = 0;
+    // Lock scroll position during analysis (prevent GitHub lazy-load from scrolling)
+    const originalScrollY = window.scrollY;
+    const originalScrollX = window.scrollX;
+    const originalScrollBehavior = document.documentElement.style.scrollBehavior;
+    document.documentElement.style.scrollBehavior = 'auto'; // Disable smooth scroll
+
+    try {
+      // Modern GitHub uses .file-info containers with data-details-container-group="file"
+      // These contain both the filename and the diff/stats
+      let fileContainers = document.querySelectorAll('[data-details-container-group="file"]');
+      
+      // Fallback to old selectors if new ones not found
+      if (fileContainers.length === 0) {
+        fileContainers = document.querySelectorAll('.file');
+      }
+      
+      console.log('[PR Lang Stats] Found', fileContainers.length, 'file containers');
+      
+      let skippedGenerated = 0;
     
     for (const container of fileContainers) {
       // Skip generated files if filter is enabled
@@ -210,14 +217,22 @@ class GitHubPRLanguageStats {
       console.log(`[PR Lang Stats] Skipped ${skippedGenerated} generated file(s)`);
     }
     
-    console.log('[PR Lang Stats] Language stats:', Array.from(this.languageStats.entries()));
-    
-    // Calculate estimated review time
-    this.estimatedReviewTime = this.calculateReviewTime();
-    
-    // Render ONCE with all final data
-    this.displayStats();
-    console.log('[PR Lang Stats] Rendered with complete data and review time');
+      console.log('[PR Lang Stats] Language stats:', Array.from(this.languageStats.entries()));
+      
+      // Calculate estimated review time
+      this.estimatedReviewTime = this.calculateReviewTime();
+      
+      // Render ONCE with all final data
+      this.displayStats();
+      console.log('[PR Lang Stats] Rendered with complete data and review time');
+      
+    } finally {
+      // Restore scroll behavior
+      document.documentElement.style.scrollBehavior = originalScrollBehavior;
+      
+      // Force scroll back to original position
+      window.scrollTo(originalScrollX, originalScrollY);
+    }
   }
 
   calculateReviewTime() {

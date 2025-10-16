@@ -40,7 +40,7 @@ describe('Unknown Languages', () => {
   it('should handle files without extensions', () => {
     expect(detectLanguageFromFilename('README')).toBe('Other');
     expect(detectLanguageFromFilename('LICENSE')).toBe('Other');
-    expect(detectLanguageFromFilename('Dockerfile')).toBe('Other'); // Should this be recognized?
+    expect(detectLanguageFromFilename('Dockerfile')).toBe('Dockerfile'); // We DO recognize this!
   });
 
   it('should not crash on edge cases', () => {

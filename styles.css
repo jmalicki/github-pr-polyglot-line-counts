@@ -1,0 +1,72 @@
+/* GitHub PR Language Stats - Styles */
+
+#pr-language-stats-panel {
+  background-color: var(--bgColor-muted, #f6f8fa);
+  border-color: var(--borderColor-default, #d0d7de) !important;
+  margin-top: 16px;
+}
+
+.language-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.language-stats-table tr {
+  border-bottom: 1px solid var(--borderColor-muted, #d8dee4);
+}
+
+.language-stats-table tr:last-child {
+  border-bottom: none;
+}
+
+.language-stats-table td {
+  padding: 8px 12px;
+}
+
+.language-name {
+  font-weight: 500;
+  color: var(--fgColor-default, #24292f);
+}
+
+.language-files {
+  color: var(--fgColor-muted, #57606a);
+  font-size: 12px;
+}
+
+.language-added {
+  color: var(--diffBlob-addition-fgColor-text, #1a7f37);
+  font-weight: 500;
+  text-align: right;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+.language-removed {
+  color: var(--diffBlob-deletion-fgColor-text, #cf222e);
+  font-weight: 500;
+  text-align: right;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+.language-percentage {
+  text-align: right;
+  color: var(--fgColor-muted, #57606a);
+  font-size: 12px;
+}
+
+.total-row {
+  border-top: 2px solid var(--borderColor-default, #d0d7de) !important;
+  font-weight: 600;
+}
+
+.total-row td {
+  padding-top: 12px;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  #pr-language-stats-panel {
+    background-color: var(--bgColor-muted, #161b22);
+  }
+}
+

@@ -613,32 +613,10 @@ class GitHubPRLanguageStats {
   }
 
   setupDOMObserver() {
-    // Watch for PR page changes (e.g., switching tabs, lazy loading)
-    // But IGNORE changes inside our own panel to prevent re-render loops
-    this.observer = new MutationObserver((mutations) => {
-      // Skip mutations that are just our own panel updates
-      const isOurOwnUpdate = mutations.every(mutation => {
-        const target = mutation.target;
-        const panel = document.getElementById('pr-language-stats-panel');
-        return panel && (target === panel || panel.contains(target));
-      });
-      
-      if (isOurOwnUpdate) {
-        return; // Don't re-analyze for our own changes
-      }
-      
-      const diffView = document.querySelector('[data-tagsearch-path], [data-hpc], .file-header');
-      if (diffView && !document.getElementById('pr-language-stats-panel')) {
-        console.log('[PR Lang Stats] DOM changed, re-analyzing...');
-        this.renderStage = 0;
-        this.analyze();
-      }
-    });
-
-    this.observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+    // Disabled MutationObserver - it was causing jitter
+    // Extension only runs once per page load
+    // User can refresh page if they need to re-analyze
+    console.log('[PR Lang Stats] Observer disabled - single render mode');
   }
 }
 

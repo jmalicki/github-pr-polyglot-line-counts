@@ -1,7 +1,7 @@
 {
-  "name": "github-pr-language-stats",
+  "name": "github-pr-polyglot-line-counts",
   "version": "0.0.3",
-  "description": "Chrome extension that shows line count statistics by programming language for GitHub pull requests",
+  "description": "Language-aware line count statistics for GitHub pull requests with review time estimates",
   "main": "content.js",
   "scripts": {
     "test": "vitest run",

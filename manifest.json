@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "GitHub PR Language Stats",
+  "name": "GitHub PR Polyglot Line Counts",
   "version": "0.0.3",
-  "description": "Shows line count statistics by programming language for GitHub pull requests",
+  "description": "Language-aware line count statistics for GitHub pull requests with review time estimates",
   "permissions": [
     "storage"
   ],

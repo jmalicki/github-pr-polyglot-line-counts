@@ -75,22 +75,14 @@ This extension:
 - ✅ Does not require authentication
 - ✅ Open source for transparency
 
+## Documentation
+
+- [Installation Guide](docs/INSTALLATION.md) - How to install the extension
+- [Testing Guide](docs/TESTING.md) - Running tests
+- [Changelog](docs/CHANGELOG.md) - Version history
+- [Project Structure](docs/PROJECT_STRUCTURE.md) - Codebase organization
+
 ## Development
-
-### Project Structure
-
-```
-github-linecount/
-├── manifest.json       # Extension configuration
-├── content.js          # Main logic for analyzing PRs
-├── styles.css          # UI styling
-├── icons/              # Extension icons
-├── tests/              # Automated tests
-│   ├── e2e/           # Puppeteer E2E tests
-│   └── README.md      # Testing documentation
-├── package.json        # Node.js dependencies
-└── README.md          # This file
-```
 
 ### Making Changes
 

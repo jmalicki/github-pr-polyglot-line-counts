@@ -9,9 +9,10 @@ Like "Better Line Counts" but shows **which languages** changed, not just totals
 ## Features
 
 - 📊 **Language Breakdown**: See exactly how many lines were added/removed per programming language
-- 🎯 **Accurate Detection**: Uses file extensions to identify languages
+- 📝 **Review Time Estimate**: Calculates estimated review time based on language complexity
+- ☑️ **Exclude Generated**: Toggle to filter out generated files
+- ⚡ **Fast**: Uses GitHub API for instant results
 - 🎨 **GitHub Native Design**: Seamlessly integrates with GitHub's UI
-- 🌙 **Dark Mode Support**: Automatically adapts to your GitHub theme
 
 ## Installation
 
@@ -51,29 +52,19 @@ The extension shows:
 ## How It Works
 
 The extension:
-1. Detects when you're viewing a GitHub pull request
-2. Analyzes the diff view to extract file changes
-3. Identifies the programming language from file extensions
-4. Calculates line counts (added/removed) per language
-5. Displays a summary table in the PR interface
+1. Detects when you're viewing a GitHub pull request  
+2. Fetches file data from GitHub API
+3. Groups changes by programming language
+4. Displays a summary table in the PR interface
 
-## Supported Languages
-
-The extension detects 40+ programming languages including:
-- **Web**: JavaScript, TypeScript, HTML, CSS, Vue, React (JSX/TSX)
-- **Backend**: Python, Ruby, PHP, Java, Go, Rust, C/C++, C#
-- **Data**: JSON, YAML, SQL, XML
-- **Markup**: Markdown, reStructuredText
-- And many more!
+Supports 40+ programming languages via file extension mapping.
 
 ## Privacy
 
-This extension:
 - ✅ Only runs on GitHub.com
-- ✅ Analyzes data locally in your browser
-- ✅ Does not collect or transmit any data
-- ✅ Does not require authentication
-- ✅ Open source for transparency
+- ✅ Uses GitHub's public API
+- ✅ No data collection or tracking
+- ✅ Open source
 
 ## Documentation
 
@@ -120,23 +111,7 @@ Contributions are welcome! Please:
 
 MIT License - see [LICENSE](LICENSE) file for details
 
-## Roadmap
-
-Potential future enhancements:
-- [ ] Support for GitHub Enterprise
-- [ ] Filtering options (e.g., exclude generated files)
-- [ ] Export statistics as CSV/JSON
-- [ ] Language-specific configurations
-- [ ] Integration with GitHub's Linguist API for improved detection
-- [ ] Support for commits view (not just PRs)
-
-## Acknowledgments
-
-- Inspired by GitHub's language statistics
-- Built with respect for user privacy
-- Uses GitHub's native design system
-
 ---
 
-**Note**: This is an independent project and is not affiliated with GitHub.
+**Note**: Independent project, not affiliated with GitHub.
 

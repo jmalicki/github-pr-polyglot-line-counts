@@ -107,6 +107,10 @@ Contributions are welcome! Please:
 3. Make your changes
 4. Submit a pull request
 
+## Acknowledgments
+
+Inspired by [Better Line Counts](https://chromewebstore.google.com/detail/github-better-line-counts/ocfdgncpifmegplaglcnglhioflaimkd) - which filters generated files from PR totals. We wanted the same accuracy, but broken down **by language** to understand what actually changed.
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details

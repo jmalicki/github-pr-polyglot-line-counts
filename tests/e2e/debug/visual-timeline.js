@@ -28,8 +28,8 @@ async function captureVisualTimeline() {
       `--disable-extensions-except=${extensionPath}`,
       `--load-extension=${extensionPath}`,
       '--no-sandbox',
-      '--window-size=1920,1080'
-    ]
+      '--window-size=1920,1080',
+    ],
   });
 
   const page = await browser.newPage();
@@ -39,22 +39,22 @@ async function captureVisualTimeline() {
   const screenshots = [];
 
   // Helper to take timestamped screenshot
-  const capture = async (label) => {
+  const capture = async label => {
     screenshotCounter++;
     const timestamp = Date.now();
     const filename = `${String(screenshotCounter).padStart(2, '0')}-${label}-${timestamp}.png`;
     const path = join(timelineDir, filename);
-    
+
     await page.screenshot({ path, fullPage: false });
-    
+
     const logEntry = {
       step: screenshotCounter,
       label,
       timestamp,
-      filename
+      filename,
     };
     screenshots.push(logEntry);
-    
+
     console.log(`📸 ${screenshotCounter}. ${label} (${path})`);
     return logEntry;
   };
@@ -66,7 +66,7 @@ async function captureVisualTimeline() {
     if (text.includes('[PR Lang Stats]')) {
       extensionLogs.push({
         timestamp: Date.now(),
-        text
+        text,
       });
       console.log(`   🔍 Extension: ${text}`);
     }
@@ -76,9 +76,9 @@ async function captureVisualTimeline() {
   await capture('00-before-navigation');
 
   console.log('\n📄 Navigating to PR...');
-  await page.goto('https://github.com/jmalicki/arsync/pull/55/files', { 
+  await page.goto('https://github.com/jmalicki/arsync/pull/55/files', {
     waitUntil: 'domcontentloaded',
-    timeout: 30000 
+    timeout: 30000,
   });
 
   await capture('01-dom-loaded');
@@ -108,26 +108,26 @@ async function captureVisualTimeline() {
   for (let i = 0; i < 10; i++) {
     await new Promise(resolve => setTimeout(resolve, 500));
     await capture(`06-interval-${i}-at-${i * 500}ms`);
-    
+
     // Check panel state
     const panelState = await page.evaluate(() => {
       const panel = document.getElementById('pr-language-stats-panel');
       if (!panel) return 'MISSING';
-      
+
       const opacity = window.getComputedStyle(panel).opacity;
       const visibility = window.getComputedStyle(panel).visibility;
       const display = window.getComputedStyle(panel).display;
       const innerHTML = panel.innerHTML.substring(0, 100);
-      
+
       return {
         opacity,
         visibility,
         display,
         hasContent: innerHTML.length > 50,
-        contentPreview: innerHTML.replace(/\s+/g, ' ')
+        contentPreview: innerHTML.replace(/\s+/g, ' '),
       };
     });
-    
+
     if (panelState === 'MISSING') {
       console.log(`   ⚠️  Panel MISSING at ${i * 500}ms!`);
     } else if (panelState.opacity === '0') {
@@ -166,4 +166,3 @@ async function captureVisualTimeline() {
 }
 
 captureVisualTimeline().catch(console.error);
-

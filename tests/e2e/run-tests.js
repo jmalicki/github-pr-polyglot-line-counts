@@ -2,7 +2,7 @@
 
 /**
  * E2E Test Runner for GitHub PR Language Stats Extension
- * 
+ *
  * This script:
  * - Launches Chrome with the extension loaded
  * - Navigates to a GitHub PR
@@ -31,7 +31,7 @@ async function testExtension() {
   // Launch browser with extension loaded
   console.log('📦 Loading extension from:', extensionPath);
   const isHeadless = !process.env.HEADED; // Default to headless, set HEADED=1 to see browser
-  
+
   const browser = await puppeteer.launch({
     headless: isHeadless,
     args: [
@@ -39,10 +39,10 @@ async function testExtension() {
       `--load-extension=${extensionPath}`,
       '--no-sandbox',
       '--disable-setuid-sandbox',
-      '--window-size=1920,1080'
-    ]
+      '--window-size=1920,1080',
+    ],
   });
-  
+
   if (isHeadless) {
     console.log('🤖 Running in headless mode (set HEADED=1 to see browser)');
   }
@@ -54,13 +54,13 @@ async function testExtension() {
     // Test on a real GitHub PR
     // You can change this to any PR you want to test
     const testPR = process.env.TEST_PR_URL || 'https://github.com/jmalicki/arsync/pull/55';
-    
+
     console.log(`📄 Navigating to: ${testPR}`);
-    
+
     // Extract PR info for API validation
     const prMatch = testPR.match(/github\.com\/([^\/]+)\/([^\/]+)\/pull\/(\d+)/);
     const [, owner, repo, prNumber] = prMatch;
-    
+
     // Fetch actual GitHub stats via API for validation
     console.log('📊 Fetching GitHub PR stats for validation...');
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}`;
@@ -69,17 +69,21 @@ async function testExtension() {
     const expectedStats = {
       additions: prData.additions,
       deletions: prData.deletions,
-      changedFiles: prData.changed_files
+      changedFiles: prData.changed_files,
     };
-    console.log(`   Expected: +${expectedStats.additions} -${expectedStats.deletions} (${expectedStats.changedFiles} files)\n`);
-    
+    console.log(
+      `   Expected: +${expectedStats.additions} -${expectedStats.deletions} (${expectedStats.changedFiles} files)\n`
+    );
+
     // Go directly to Files changed tab by appending /files
     const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
     await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
     // Wait for GitHub to load the diff view
     console.log('⏳ Waiting for GitHub diff view to load...');
-    await page.waitForSelector('.file-header, [data-file-type], [data-tagsearch-path]', { timeout: 15000 });
+    await page.waitForSelector('.file-header, [data-file-type], [data-tagsearch-path]', {
+      timeout: 15000,
+    });
 
     // Give the extension time to analyze the diff
     console.log('🔍 Waiting for extension to analyze the PR...');
@@ -92,10 +96,10 @@ async function testExtension() {
 
     // Check if the language stats panel appeared
     const panelExists = await page.$('#pr-language-stats-panel');
-    
+
     if (panelExists) {
       console.log('✅ Language stats panel found!');
-      
+
       // Scroll to the panel
       await page.evaluate(() => {
         const panel = document.querySelector('#pr-language-stats-panel');
@@ -103,9 +107,9 @@ async function testExtension() {
           panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       });
-      
+
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       // Take screenshot with panel visible
       const screenshotPanel = join(screenshotsDir, '02-language-stats-panel.png');
       await page.screenshot({ path: screenshotPanel, fullPage: false });
@@ -121,12 +125,14 @@ async function testExtension() {
       const stats = await page.evaluate(() => {
         const table = document.querySelector('#pr-language-stats-panel table');
         if (!table) return null;
-        
+
         const rows = Array.from(table.querySelectorAll('tr'));
-        return rows.map(row => {
-          const cells = Array.from(row.querySelectorAll('td'));
-          return cells.map(cell => cell.textContent.trim()).join(' | ');
-        }).filter(row => row);
+        return rows
+          .map(row => {
+            const cells = Array.from(row.querySelectorAll('td'));
+            return cells.map(cell => cell.textContent.trim()).join(' | ');
+          })
+          .filter(row => row);
       });
 
       if (stats) {
@@ -134,7 +140,7 @@ async function testExtension() {
         console.log('─'.repeat(60));
         stats.forEach(stat => console.log(stat));
         console.log('─'.repeat(60));
-        
+
         // Validate totals match GitHub's reported stats
         const totalRow = stats[stats.length - 1];
         if (totalRow) {
@@ -142,38 +148,41 @@ async function testExtension() {
           if (match) {
             const extractedAdded = parseInt(match[1]);
             const extractedRemoved = parseInt(match[2]);
-            
+
             console.log('\n🔍 Validation:');
             console.log(`   Extension reports: +${extractedAdded} -${extractedRemoved}`);
-            console.log(`   GitHub PR page reports: +${expectedStats.additions} -${expectedStats.deletions}`);
-            
+            console.log(
+              `   GitHub PR page reports: +${expectedStats.additions} -${expectedStats.deletions}`
+            );
+
             const addedMatch = extractedAdded === expectedStats.additions;
             const removedMatch = extractedRemoved === expectedStats.deletions;
-            
+
             if (addedMatch && removedMatch) {
               console.log('   ✅ Totals match perfectly!');
             } else {
               const diff = Math.abs(expectedStats.additions - extractedAdded);
-              const percentDiff = (diff / expectedStats.additions * 100).toFixed(1);
-              
+              const percentDiff = ((diff / expectedStats.additions) * 100).toFixed(1);
+
               if (percentDiff < 25) {
                 console.log(`   ℹ️  Close match (${percentDiff}% difference)`);
                 console.log('   Note: GitHub UI vs API can differ (renamed/binary files)');
                 console.log('   Extension shows API data (source of truth)');
               } else {
                 console.log('   ❌ Significant mismatch!');
-                console.log(`   Difference: ${expectedStats.additions - extractedAdded} additions, ${expectedStats.deletions - extractedRemoved} deletions`);
+                console.log(
+                  `   Difference: ${expectedStats.additions - extractedAdded} additions, ${expectedStats.deletions - extractedRemoved} deletions`
+                );
               }
             }
           }
         }
       }
-      
+
       // Already on Files Changed tab, just take a screenshot
       const screenshotFiles = join(screenshotsDir, '04-files-view.png');
       await page.screenshot({ path: screenshotFiles, fullPage: false });
       console.log(`📸 Files view screenshot saved: ${screenshotFiles}`);
-
     } else {
       console.log('❌ Language stats panel NOT found');
       const screenshotError = join(screenshotsDir, 'error-panel-not-found.png');
@@ -188,15 +197,14 @@ async function testExtension() {
 
     console.log('\n✨ Test completed successfully!');
     console.log(`📁 All screenshots saved to: ${screenshotsDir}`);
-
   } catch (error) {
     console.error('❌ Test failed:', error.message);
-    
+
     // Take error screenshot
     const errorScreenshot = join(screenshotsDir, 'error-test-failure.png');
     await page.screenshot({ path: errorScreenshot, fullPage: true });
     console.log(`📸 Error screenshot saved: ${errorScreenshot}`);
-    
+
     throw error;
   } finally {
     // Keep browser open for manual inspection if DEBUG env var is set
@@ -204,7 +212,7 @@ async function testExtension() {
       console.log('\n⏸️  Browser will stay open for 30 seconds for inspection...');
       await new Promise(resolve => setTimeout(resolve, 30000));
     }
-    
+
     await browser.close();
     console.log('👋 Browser closed');
   }
@@ -216,8 +224,7 @@ testExtension()
     console.log('\n✅ All tests passed!');
     process.exit(0);
   })
-  .catch((error) => {
+  .catch(error => {
     console.error('\n❌ Tests failed:', error);
     process.exit(1);
   });
-

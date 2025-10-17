@@ -20,35 +20,37 @@ class GitHubPRLanguageStats {
     } catch (e) {
       console.warn('[PR Lang Stats] Could not load preferences:', e);
     }
-    
+
     // Wait for full page load (skip early detection - causes flickering)
     await this.waitForPRPage();
-    
+
     // Analyze and render ONCE with complete data
     await this.analyze();
-    
+
     this.setupDOMObserver();
   }
 
   waitForPRPage() {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       let lastCount = 0;
       let stableCount = 0;
-      
+
       const checkInterval = setInterval(() => {
         // Wait for file containers to be present (modern GitHub)
         const fileContainers = document.querySelectorAll('[data-details-container-group="file"]');
         const currentCount = fileContainers.length;
-        
+
         // Check if count is stable (hasn't changed for 2 checks = 1 second)
         if (currentCount > 0) {
           if (currentCount === lastCount) {
             stableCount++;
-            
+
             // If count has been stable for 2 checks (1 second), we're done
             if (stableCount >= 2) {
               clearInterval(checkInterval);
-              console.log(`[PR Lang Stats] Found ${currentCount} file containers (stable), starting analysis...`);
+              console.log(
+                `[PR Lang Stats] Found ${currentCount} file containers (stable), starting analysis...`
+              );
               resolve();
               return;
             }
@@ -59,9 +61,11 @@ class GitHubPRLanguageStats {
             console.log(`[PR Lang Stats] Detected ${currentCount} files, waiting for more...`);
           }
         }
-        
+
         // Fallback: Check for either old or new GitHub UI
-        const diffContainer = document.querySelector('.diff-view, .js-diff-progressive-container, [data-hpc], .file-header, .file');
+        const diffContainer = document.querySelector(
+          '.diff-view, .js-diff-progressive-container, [data-hpc], .file-header, .file'
+        );
         if (diffContainer && currentCount === 0) {
           // Old UI detected, proceed immediately
           clearInterval(checkInterval);
@@ -69,11 +73,13 @@ class GitHubPRLanguageStats {
           resolve();
         }
       }, 500);
-      
+
       // Timeout after 10 seconds
       setTimeout(() => {
         clearInterval(checkInterval);
-        console.warn('[PR Lang Stats] Timeout waiting for stable file count, attempting analysis anyway...');
+        console.warn(
+          '[PR Lang Stats] Timeout waiting for stable file count, attempting analysis anyway...'
+        );
         resolve();
       }, 10000);
     });
@@ -85,7 +91,7 @@ class GitHubPRLanguageStats {
     return {
       owner: parts[1],
       repo: parts[2],
-      prNumber: parts[4]
+      prNumber: parts[4],
     };
   }
 
@@ -105,62 +111,62 @@ class GitHubPRLanguageStats {
 
   detectLanguageFromFilename(filename) {
     const ext = filename.split('.').pop().toLowerCase();
-    
+
     const extensionMap = {
       // Web
-      'js': 'JavaScript',
-      'jsx': 'JavaScript',
-      'ts': 'TypeScript',
-      'tsx': 'TypeScript',
-      'html': 'HTML',
-      'css': 'CSS',
-      'scss': 'SCSS',
-      'sass': 'Sass',
-      'less': 'Less',
-      'vue': 'Vue',
-      
+      js: 'JavaScript',
+      jsx: 'JavaScript',
+      ts: 'TypeScript',
+      tsx: 'TypeScript',
+      html: 'HTML',
+      css: 'CSS',
+      scss: 'SCSS',
+      sass: 'Sass',
+      less: 'Less',
+      vue: 'Vue',
+
       // Backend
-      'py': 'Python',
-      'rb': 'Ruby',
-      'php': 'PHP',
-      'java': 'Java',
-      'kt': 'Kotlin',
-      'scala': 'Scala',
-      'go': 'Go',
-      'rs': 'Rust',
-      'c': 'C',
-      'cpp': 'C++',
-      'cc': 'C++',
-      'cxx': 'C++',
-      'h': 'C/C++ Header',
-      'hpp': 'C++ Header',
-      'cs': 'C#',
-      'swift': 'Swift',
-      
+      py: 'Python',
+      rb: 'Ruby',
+      php: 'PHP',
+      java: 'Java',
+      kt: 'Kotlin',
+      scala: 'Scala',
+      go: 'Go',
+      rs: 'Rust',
+      c: 'C',
+      cpp: 'C++',
+      cc: 'C++',
+      cxx: 'C++',
+      h: 'C/C++ Header',
+      hpp: 'C++ Header',
+      cs: 'C#',
+      swift: 'Swift',
+
       // Scripting
-      'sh': 'Shell',
-      'bash': 'Bash',
-      'zsh': 'Zsh',
-      'pl': 'Perl',
-      'lua': 'Lua',
-      
+      sh: 'Shell',
+      bash: 'Bash',
+      zsh: 'Zsh',
+      pl: 'Perl',
+      lua: 'Lua',
+
       // Data
-      'json': 'JSON',
-      'xml': 'XML',
-      'yaml': 'YAML',
-      'yml': 'YAML',
-      'toml': 'TOML',
-      'sql': 'SQL',
-      
+      json: 'JSON',
+      xml: 'XML',
+      yaml: 'YAML',
+      yml: 'YAML',
+      toml: 'TOML',
+      sql: 'SQL',
+
       // Markup
-      'md': 'Markdown',
-      'rst': 'reStructuredText',
-      'tex': 'TeX',
-      
+      md: 'Markdown',
+      rst: 'reStructuredText',
+      tex: 'TeX',
+
       // Config
-      'dockerfile': 'Dockerfile',
-      'gitignore': 'Git Config',
-      'env': 'Environment'
+      dockerfile: 'Dockerfile',
+      gitignore: 'Git Config',
+      env: 'Environment',
     };
 
     return extensionMap[ext] || 'Other';
@@ -168,9 +174,9 @@ class GitHubPRLanguageStats {
 
   async analyze() {
     console.log('[PR Lang Stats] ═══ ANALYZE START ═══');
-    
+
     const prInfo = this.extractPRInfo();
-    
+
     // Always use GitHub API - it's more reliable than DOM scraping
     // Only falls back to DOM if API fails (rate limit, network error, etc.)
     await this.analyzeViaAPI(prInfo);
@@ -179,59 +185,59 @@ class GitHubPRLanguageStats {
   calculateReviewTime() {
     // Research-based formula: ~150-200 lines/minute for code review
     // Source: Various studies on code review effectiveness
-    
+
     const BASE_REVIEW_RATE = 175; // lines per minute (middle ground)
-    
+
     // Language complexity multipliers (harder languages take longer)
     const COMPLEXITY_MULTIPLIERS = {
-      'Rust': 1.5,
-      'C': 1.4,
+      Rust: 1.5,
+      C: 1.4,
       'C++': 1.4,
-      'Go': 1.3,
-      'Java': 1.2,
-      'Python': 1.0,
-      'JavaScript': 1.0,
-      'TypeScript': 1.1,
-      'HTML': 0.7,
-      'CSS': 0.7,
-      'Markdown': 0.5,
-      'JSON': 0.3,
-      'YAML': 0.3,
-      'Other': 1.0
+      Go: 1.3,
+      Java: 1.2,
+      Python: 1.0,
+      JavaScript: 1.0,
+      TypeScript: 1.1,
+      HTML: 0.7,
+      CSS: 0.7,
+      Markdown: 0.5,
+      JSON: 0.3,
+      YAML: 0.3,
+      Other: 1.0,
     };
-    
+
     let totalMinutes = 0;
     let largeFileCount = 0;
-    
+
     for (const [language, stats] of this.languageStats.entries()) {
       const linesChanged = stats.added + stats.removed;
       const multiplier = COMPLEXITY_MULTIPLIERS[language] || 1.0;
-      
+
       // Base time for this language
       const languageMinutes = (linesChanged / BASE_REVIEW_RATE) * multiplier;
       totalMinutes += languageMinutes;
-      
+
       // Count large files (>500 lines changed = needs extra attention)
       if (linesChanged > 500) {
         largeFileCount++;
       }
     }
-    
+
     // Add overhead for large files (context switching, complexity)
     if (largeFileCount > 0) {
       totalMinutes += largeFileCount * 5; // 5 min overhead per large file
     }
-    
+
     // Minimum review time (even small PRs need some time)
     totalMinutes = Math.max(totalMinutes, 2);
-    
+
     // Add buffer for discussion, questions, testing (20% overhead)
     totalMinutes *= 1.2;
-    
+
     return {
       min: Math.floor(totalMinutes * 0.8), // Conservative estimate
-      max: Math.ceil(totalMinutes * 1.2),  // Generous estimate
-      largeFiles: largeFileCount
+      max: Math.ceil(totalMinutes * 1.2), // Generous estimate
+      largeFiles: largeFileCount,
     };
   }
 
@@ -240,42 +246,42 @@ class GitHubPRLanguageStats {
     if (container.classList.contains('Details--collapsed')) {
       return true;
     }
-    
+
     // Method 2: Check for "Load diff" button (lazy-loaded generated files)
     const text = container.textContent;
     if (text.includes('Load diff') || text.includes('Large diffs are not rendered by default')) {
       return true;
     }
-    
+
     // Method 3: Check for explicit markers in text
     if (text.includes('Binary file') || text.includes('File renamed without changes')) {
       return true;
     }
-    
+
     return false;
   }
 
   extractFileInfo(container) {
     // Try multiple ways to get the filename, prioritizing data attributes
     let filename = null;
-    
+
     // Method 1: data-tagsearch-path attribute (most reliable for modern GitHub)
     filename = container.getAttribute('data-tagsearch-path');
-    
+
     // Method 2: data-path attribute
     if (!filename) {
       filename = container.getAttribute('data-path');
     }
-    
+
     // Method 3: Look for data-tagsearch-path or data-path on nested elements
     if (!filename) {
       const pathElement = container.querySelector('[data-tagsearch-path], [data-path]');
       if (pathElement) {
-        filename = pathElement.getAttribute('data-tagsearch-path') || 
-                   pathElement.getAttribute('data-path');
+        filename =
+          pathElement.getAttribute('data-tagsearch-path') || pathElement.getAttribute('data-path');
       }
     }
-    
+
     // Method 4: Parse from text content (GitHub shows "{changes} changes: ... {filename}")
     if (!filename) {
       const text = container.textContent;
@@ -285,7 +291,7 @@ class GitHubPRLanguageStats {
         filename = pathMatch[1];
       }
     }
-    
+
     // Method 5: title attribute (fallback)
     if (!filename) {
       const titleElement = container.querySelector('[title]');
@@ -293,7 +299,7 @@ class GitHubPRLanguageStats {
         filename = titleElement.getAttribute('title') || titleElement.textContent.trim();
       }
     }
-    
+
     // Method 6: clipboard-copy attribute
     if (!filename) {
       const copyElement = container.querySelector('clipboard-copy');
@@ -301,7 +307,7 @@ class GitHubPRLanguageStats {
         filename = copyElement.getAttribute('value');
       }
     }
-    
+
     if (!filename) {
       console.warn('[PR Lang Stats] Could not extract filename from container:', container);
       return null;
@@ -312,25 +318,25 @@ class GitHubPRLanguageStats {
 
   calculateFileStats(fileElementOrAPIData) {
     const stats = { added: 0, removed: 0 };
-    
+
     // If this is API data (has 'additions' property), use it directly
     if (typeof fileElementOrAPIData === 'object' && 'additions' in fileElementOrAPIData) {
       return {
         added: fileElementOrAPIData.additions,
-        removed: fileElementOrAPIData.deletions
+        removed: fileElementOrAPIData.deletions,
       };
     }
-    
+
     // Otherwise, it's a DOM element - parse from text
     const fileElement = fileElementOrAPIData;
-    
+
     // Method 1: Parse from text (modern GitHub format)
     // Format: "325 changes: 325 additions & 0 deletions" or "118 changes: 62 additions & 56 deletions"
     // Match the pattern: "{number} addition(s) & {number} deletion(s)"
     const text = fileElement.textContent;
     const statsPattern = /(\d+)\s+addition(?:s)?\s+&\s+(\d+)\s+deletion(?:s)?/;
     const match = text.match(statsPattern);
-    
+
     if (match) {
       stats.added = parseInt(match[1]);
       stats.removed = parseInt(match[2]);
@@ -338,7 +344,7 @@ class GitHubPRLanguageStats {
       // Try individual patterns if the full pattern doesn't match
       const additionsMatch = text.match(/(\d+)\s+addition/);
       const deletionsMatch = text.match(/(\d+)\s+deletion/);
-      
+
       if (additionsMatch) {
         stats.added = parseInt(additionsMatch[1]);
       }
@@ -346,19 +352,21 @@ class GitHubPRLanguageStats {
         stats.removed = parseInt(deletionsMatch[1]);
       }
     }
-    
+
     // Method 2: Look for GitHub's diff stats bar (older GitHub UI)
     if (stats.added === 0 && stats.removed === 0) {
       const diffStats = fileElement.querySelector('.diffbar');
       if (diffStats) {
         const addedSpan = diffStats.querySelector('.diffstat-bar-added');
         const deletedSpan = diffStats.querySelector('.diffstat-bar-deleted');
-        
+
         if (addedSpan) {
           stats.added = parseInt(addedSpan.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
         }
         if (deletedSpan) {
-          stats.removed = parseInt(deletedSpan.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0');
+          stats.removed = parseInt(
+            deletedSpan.getAttribute('aria-label')?.match(/\d+/)?.[0] || '0'
+          );
         }
       }
     }
@@ -380,29 +388,29 @@ class GitHubPRLanguageStats {
 
   displayStats() {
     console.log('[PR Lang Stats] >>> displayStats() called');
-    
+
     // ONLY update existing panel, NEVER create a new one
     // (Skeleton already created synchronously at page load)
     const existingPanel = document.getElementById('pr-language-stats-panel');
-    
+
     if (existingPanel) {
       console.log('[PR Lang Stats] >>> Updating existing panel');
-      
+
       // Save scroll position before updating
       const scrollY = window.scrollY;
       const scrollX = window.scrollX;
-      
+
       // Update content WITHOUT opacity tricks (they might be causing flicker)
       const newPanel = this.createStatsPanel();
       existingPanel.innerHTML = newPanel.innerHTML;
-      
+
       console.log('[PR Lang Stats] >>> Panel updated');
-      
+
       // Restore scroll position (prevent jump)
       if (window.scrollY !== scrollY || window.scrollX !== scrollX) {
         window.scrollTo(scrollX, scrollY);
       }
-      
+
       return;
     }
 
@@ -420,10 +428,10 @@ class GitHubPRLanguageStats {
     const statsPanel = this.createStatsPanel();
     statsPanel.style.opacity = '0';
     prHeader.parentNode.insertBefore(statsPanel, prHeader.nextSibling);
-    
+
     // Restore scroll position immediately
     window.scrollTo(scrollX, scrollY);
-    
+
     // Reveal after insertion
     requestAnimationFrame(() => {
       statsPanel.style.opacity = '1';
@@ -438,52 +446,53 @@ class GitHubPRLanguageStats {
     // Header with filter toggle
     const headerContainer = document.createElement('div');
     headerContainer.className = 'd-flex flex-justify-between flex-items-center mb-2';
-    
+
     const headerLeft = document.createElement('div');
-    
+
     const header = document.createElement('h3');
     header.className = 'h5 mb-0';
     header.innerHTML = '📊 Language Statistics';
     headerLeft.appendChild(header);
-    
+
     // Add estimated review time if available
     if (this.estimatedReviewTime) {
       const reviewTime = document.createElement('div');
       reviewTime.className = 'text-small color-fg-muted mt-1';
-      const timeRange = this.estimatedReviewTime.min === this.estimatedReviewTime.max
-        ? `~${this.estimatedReviewTime.min} min`
-        : `${this.estimatedReviewTime.min}-${this.estimatedReviewTime.max} min`;
-      
+      const timeRange =
+        this.estimatedReviewTime.min === this.estimatedReviewTime.max
+          ? `~${this.estimatedReviewTime.min} min`
+          : `${this.estimatedReviewTime.min}-${this.estimatedReviewTime.max} min`;
+
       reviewTime.innerHTML = `📝 Est. Review Time: ${timeRange}`;
-      
+
       // Add tooltip/warning for large files
       if (this.estimatedReviewTime.largeFiles > 0) {
         reviewTime.innerHTML += ` <span title="${this.estimatedReviewTime.largeFiles} large file(s) - needs extra attention">⚠️</span>`;
       }
-      
+
       headerLeft.appendChild(reviewTime);
     }
-    
+
     headerContainer.appendChild(headerLeft);
-    
+
     // Toggle for excluding generated files
     const filterContainer = document.createElement('div');
     filterContainer.className = 'd-flex flex-items-center';
-    
+
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.id = 'exclude-generated-checkbox';
     checkbox.checked = this.excludeGenerated;
     checkbox.className = 'mr-1';
     checkbox.style.cursor = 'pointer';
-    
+
     const label = document.createElement('label');
     label.htmlFor = 'exclude-generated-checkbox';
     label.className = 'text-small';
     label.textContent = 'Exclude generated';
     label.style.cursor = 'pointer';
     label.style.userSelect = 'none';
-    
+
     checkbox.addEventListener('change', () => {
       this.excludeGenerated = checkbox.checked;
       // Save preference
@@ -495,25 +504,25 @@ class GitHubPRLanguageStats {
       // Re-analyze with new filter
       this.analyze();
     });
-    
+
     filterContainer.appendChild(checkbox);
     filterContainer.appendChild(label);
     headerContainer.appendChild(filterContainer);
-    
+
     panel.appendChild(headerContainer);
 
     const table = document.createElement('table');
     table.className = 'language-stats-table';
-    
+
     // Calculate totals (use early totals if available for progressive display)
     let totalAdded = 0;
     let totalRemoved = 0;
-    
+
     this.languageStats.forEach(stats => {
       totalAdded += stats.added;
       totalRemoved += stats.removed;
     });
-    
+
     // If we have early totals but no detailed stats yet, use early totals
     if (totalAdded === 0 && totalRemoved === 0 && this.earlyTotals) {
       totalAdded = this.earlyTotals.totalAdded;
@@ -521,19 +530,24 @@ class GitHubPRLanguageStats {
     }
 
     // Sort languages by total lines changed
-    const sortedLanguages = Array.from(this.languageStats.entries())
-      .sort((a, b) => (b[1].added + b[1].removed) - (a[1].added + a[1].removed));
+    const sortedLanguages = Array.from(this.languageStats.entries()).sort(
+      (a, b) => b[1].added + b[1].removed - (a[1].added + a[1].removed)
+    );
 
     // Build ALL rows as HTML string first (prevents incremental rendering)
-    const hasDetailedStats = sortedLanguages.some(([, stats]) => stats.added > 0 || stats.removed > 0);
+    const hasDetailedStats = sortedLanguages.some(
+      ([, stats]) => stats.added > 0 || stats.removed > 0
+    );
     let tableHTML = '';
-    
-    for (const [language, stats] of sortedLanguages) {
-      const percentage = totalAdded + totalRemoved > 0 && hasDetailedStats
-        ? ((stats.added + stats.removed) / (totalAdded + totalRemoved) * 100).toFixed(1)
-        : '...';
 
-      const filesDisplay = stats.files > 0 ? `${stats.files} file${stats.files > 1 ? 's' : ''}` : '...';
+    for (const [language, stats] of sortedLanguages) {
+      const percentage =
+        totalAdded + totalRemoved > 0 && hasDetailedStats
+          ? (((stats.added + stats.removed) / (totalAdded + totalRemoved)) * 100).toFixed(1)
+          : '...';
+
+      const filesDisplay =
+        stats.files > 0 ? `${stats.files} file${stats.files > 1 ? 's' : ''}` : '...';
 
       tableHTML += `
         <tr>
@@ -556,7 +570,7 @@ class GitHubPRLanguageStats {
         <td class="language-percentage"><strong>100%</strong></td>
       </tr>
     `;
-    
+
     // Set all at once (atomic, no intermediate paints)
     table.innerHTML = tableHTML;
     panel.appendChild(table);
@@ -566,9 +580,11 @@ class GitHubPRLanguageStats {
   async shouldUseAPI(prInfo) {
     // Check if this is a large PR that will be lazy-loaded
     // Look for GitHub's "Load diff" buttons or truncation messages
-    const loadButtons = document.querySelectorAll('button[aria-label*="Load diff"], button:has-text("Load diff")');
+    const loadButtons = document.querySelectorAll(
+      'button[aria-label*="Load diff"], button:has-text("Load diff")'
+    );
     const truncationMsg = document.body.textContent.includes('Some files were not shown');
-    
+
     return loadButtons.length > 0 || truncationMsg;
   }
 
@@ -576,31 +592,31 @@ class GitHubPRLanguageStats {
     try {
       // Use the early API fetch if available (started before DOM was ready!)
       let apiResult = null;
-      
+
       if (apiDataPromise) {
         console.log('[PR Lang Stats] Using early API fetch result...');
         apiResult = await apiDataPromise;
         apiDataPromise = null; // Clear it so we don't reuse
       }
-      
+
       // If early fetch failed or wasn't available, fetch now
       if (!apiResult || !apiResult.success) {
         if (apiResult && apiResult.error && apiResult.error.isRateLimit) {
           this.showRateLimitError(apiResult.error.message);
           return;
         }
-        
+
         console.log('[PR Lang Stats] Fetching from API now...');
-        
+
         // Fetch ALL files from GitHub API (handle pagination)
         let allFiles = [];
         let page = 1;
         let hasMore = true;
-        
+
         while (hasMore && page <= 10) {
           const url = `https://api.github.com/repos/${prInfo.owner}/${prInfo.repo}/pulls/${prInfo.prNumber}/files?per_page=100&page=${page}`;
           const response = await fetch(url);
-          
+
           if (!response.ok) {
             if (response.status === 403 || response.status === 429) {
               const errorData = await response.json().catch(() => ({}));
@@ -609,58 +625,64 @@ class GitHubPRLanguageStats {
               this.showRateLimitError(message);
               return;
             }
-            
-            console.warn(`[PR Lang Stats] API request failed (${response.status}), falling back to DOM`);
+
+            console.warn(
+              `[PR Lang Stats] API request failed (${response.status}), falling back to DOM`
+            );
             return this.analyzeViaDOM();
           }
-          
+
           const files = await response.json();
-          
+
           if (files.message && files.message.includes('rate limit')) {
             console.warn('[PR Lang Stats] Rate limit hit');
             this.showRateLimitError(files.message);
             return;
           }
-          
+
           allFiles = allFiles.concat(files);
-          console.log(`[PR Lang Stats] Fetched page ${page}: ${files.length} files (total: ${allFiles.length})`);
-          
+          console.log(
+            `[PR Lang Stats] Fetched page ${page}: ${files.length} files (total: ${allFiles.length})`
+          );
+
           hasMore = files.length === 100;
           page++;
         }
-        
+
         apiResult = { success: true, files: allFiles };
       }
-      
+
       const allFiles = apiResult.files;
       console.log(`[PR Lang Stats] Total files from API: ${allFiles.length}`);
-      
+
       this.languageStats.clear();
-      
+
       // Calculate stats from API data
       for (const file of allFiles) {
         const language = this.detectLanguageFromFilename(file.filename);
         const stats = this.calculateFileStats(file);
-        
+
         if (!this.languageStats.has(language)) {
           this.languageStats.set(language, { added: 0, removed: 0, files: 0 });
         }
-        
+
         const langStats = this.languageStats.get(language);
         langStats.added += file.additions;
         langStats.removed += file.deletions;
         langStats.files += 1;
       }
-      
-      console.log('[PR Lang Stats] Language stats from API:', Array.from(this.languageStats.entries()));
-      
+
+      console.log(
+        '[PR Lang Stats] Language stats from API:',
+        Array.from(this.languageStats.entries())
+      );
+
       // Calculate estimated review time
       this.estimatedReviewTime = this.calculateReviewTime();
-      
+
       // Render with API data
       this.displayStats();
       console.log('[PR Lang Stats] ═══ ANALYZE COMPLETE (API) ═══');
-      
     } catch (error) {
       console.error('[PR Lang Stats] API analysis failed:', error);
       this.showError('Failed to analyze PR. Try refreshing the page.');
@@ -668,13 +690,15 @@ class GitHubPRLanguageStats {
   }
 
   showRateLimitError(message) {
-    this.showError(`GitHub API rate limit reached. ${message}. Try again in an hour or refresh the page.`);
+    this.showError(
+      `GitHub API rate limit reached. ${message}. Try again in an hour or refresh the page.`
+    );
   }
 
   showError(message) {
     const panel = document.getElementById('pr-language-stats-panel');
     if (!panel) return;
-    
+
     panel.innerHTML = `
       <div class="d-flex flex-justify-between flex-items-center mb-2">
         <h3 class="h5 mb-0">📊 Language Statistics</h3>
@@ -683,14 +707,14 @@ class GitHubPRLanguageStats {
         <strong>⚠️ Error:</strong> ${message}
       </div>
     `;
-    
+
     console.log('[PR Lang Stats] Showing error:', message);
   }
 
   async analyzeViaDOM() {
     // Original DOM-based analysis (renamed from analyze())
     console.log('[PR Lang Stats] Using DOM scraping...');
-    
+
     this.languageStats.clear();
 
     // Lock scroll position during analysis (prevent GitHub lazy-load from scrolling)
@@ -703,23 +727,23 @@ class GitHubPRLanguageStats {
       // Modern GitHub uses .file-info containers with data-details-container-group="file"
       // These contain both the filename and the diff/stats
       let fileContainers = document.querySelectorAll('[data-details-container-group="file"]');
-      
+
       // Fallback to old selectors if new ones not found
       if (fileContainers.length === 0) {
         fileContainers = document.querySelectorAll('.file');
       }
-      
+
       console.log('[PR Lang Stats] Found', fileContainers.length, 'file containers (DOM)');
-      
+
       let skippedGenerated = 0;
-    
+
       for (const container of fileContainers) {
         // Skip generated files if filter is enabled
         if (this.excludeGenerated && this.isGeneratedFile(container)) {
           skippedGenerated++;
           continue;
         }
-        
+
         const fileInfo = this.extractFileInfo(container);
         if (!fileInfo) continue;
 
@@ -739,20 +763,22 @@ class GitHubPRLanguageStats {
       if (skippedGenerated > 0) {
         console.log(`[PR Lang Stats] Skipped ${skippedGenerated} generated file(s)`);
       }
-      
-      console.log('[PR Lang Stats] Language stats (DOM):', Array.from(this.languageStats.entries()));
-      
+
+      console.log(
+        '[PR Lang Stats] Language stats (DOM):',
+        Array.from(this.languageStats.entries())
+      );
+
       // Calculate estimated review time
       this.estimatedReviewTime = this.calculateReviewTime();
-      
+
       // Render with DOM data
       this.displayStats();
       console.log('[PR Lang Stats] ═══ ANALYZE COMPLETE (DOM) ═══');
-      
     } finally {
       // Restore scroll behavior
       document.documentElement.style.scrollBehavior = originalScrollBehavior;
-      
+
       // Force scroll back to original position
       window.scrollTo(originalScrollX, originalScrollY);
     }
@@ -777,22 +803,22 @@ function startEarlyAPIFetch() {
   // Parse URL to get PR info (no DOM needed!)
   const match = window.location.pathname.match(/\/([^\/]+)\/([^\/]+)\/pull\/(\d+)/);
   if (!match) return;
-  
+
   const [, owner, repo, prNumber] = match;
-  
+
   console.log('[PR Lang Stats] 🚀 Starting early API fetch...');
-  
+
   // Start fetching immediately (parallel with page load!)
   apiDataPromise = (async () => {
     try {
       let allFiles = [];
       let page = 1;
       let hasMore = true;
-      
+
       while (hasMore && page <= 10) {
         const url = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100&page=${page}`;
         const response = await fetch(url);
-        
+
         if (!response.ok) {
           const error = { status: response.status, response };
           if (response.status === 403 || response.status === 429) {
@@ -802,23 +828,22 @@ function startEarlyAPIFetch() {
           }
           throw error;
         }
-        
+
         const files = await response.json();
-        
+
         if (files.message && files.message.includes('rate limit')) {
           throw { isRateLimit: true, message: files.message };
         }
-        
+
         allFiles = allFiles.concat(files);
         console.log(`[PR Lang Stats] Early fetch page ${page}: ${files.length} files`);
-        
+
         hasMore = files.length === 100;
         page++;
       }
-      
+
       console.log(`[PR Lang Stats] ✅ Early fetch complete: ${allFiles.length} files`);
       return { success: true, files: allFiles };
-      
     } catch (error) {
       console.warn('[PR Lang Stats] Early fetch failed:', error.message || error);
       return { success: false, error };
@@ -833,7 +858,7 @@ startEarlyAPIFetch();
 function injectPlaceholderSkeleton() {
   // Check if we're on a PR page
   if (!window.location.pathname.match(/\/pull\/\d+/)) return;
-  
+
   // Try to find PR header immediately
   const findAndInject = () => {
     const prHeader = document.querySelector('.gh-header-meta, [data-hpc]');
@@ -868,7 +893,7 @@ function injectPlaceholderSkeleton() {
 
   observer.observe(document.documentElement, {
     childList: true,
-    subtree: true
+    subtree: true,
   });
 
   // Stop observing after 3 seconds
@@ -888,4 +913,3 @@ if (document.readyState === 'loading') {
   extensionInstance = new GitHubPRLanguageStats();
   extensionInstance.init();
 }
-

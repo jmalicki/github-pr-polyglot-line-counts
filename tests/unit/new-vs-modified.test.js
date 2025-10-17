@@ -7,7 +7,9 @@ import { calculateLanguageStats, calculateTotals } from '../../lib/language-dete
 
 describe('New vs Modified Files', () => {
   it('should correctly handle new files (additions only) in arsync PR #55', async () => {
-    const filesResponse = await fetch('https://api.github.com/repos/jmalicki/arsync/pulls/55/files');
+    const filesResponse = await fetch(
+      'https://api.github.com/repos/jmalicki/arsync/pulls/55/files'
+    );
     const files = await filesResponse.json();
 
     // Separate new vs modified files
@@ -40,11 +42,12 @@ describe('New vs Modified Files', () => {
 
     // The issue: Most additions are in NEW files!
     expect(newFileTotals.totalAdded).toBeGreaterThan(modFileTotals.totalAdded);
-    
+
     // If extension can't find new file stats, it would miss most of the changes
-    const percentageInNewFiles = (newFileTotals.totalAdded / (newFileTotals.totalAdded + modFileTotals.totalAdded)) * 100;
+    const percentageInNewFiles =
+      (newFileTotals.totalAdded / (newFileTotals.totalAdded + modFileTotals.totalAdded)) * 100;
     console.log(`\n⚠️  ${percentageInNewFiles.toFixed(1)}% of additions are in NEW files!`);
-    console.log('   If extension can\'t parse new files, it will miss most changes.\n');
+    console.log("   If extension can't parse new files, it will miss most changes.\n");
 
     // Verify specific new files
     const condvarFile = newFiles.find(f => f.filename.includes('condvar.rs'));
@@ -73,4 +76,3 @@ describe('New vs Modified Files', () => {
     expect(totals.totalFiles).toBe(3);
   });
 });
-

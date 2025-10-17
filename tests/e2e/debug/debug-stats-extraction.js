@@ -19,14 +19,14 @@ async function debugStats() {
       `--disable-extensions-except=${extensionPath}`,
       `--load-extension=${extensionPath}`,
       '--no-sandbox',
-      '--window-size=1920,1080'
-    ]
+      '--window-size=1920,1080',
+    ],
   });
 
   const page = await browser.newPage();
-  await page.goto('https://github.com/jmalicki/arsync/pull/55/files', { 
-    waitUntil: 'networkidle2', 
-    timeout: 30000 
+  await page.goto('https://github.com/jmalicki/arsync/pull/55/files', {
+    waitUntil: 'networkidle2',
+    timeout: 30000,
   });
 
   await page.waitForSelector('[data-details-container-group="file"]', { timeout: 15000 });
@@ -38,12 +38,12 @@ async function debugStats() {
     containers.forEach((container, i) => {
       const text = container.textContent;
       const path = container.getAttribute('data-tagsearch-path') || 'unknown';
-      
+
       // Try different text patterns
       const additionsMatch = text.match(/(\d+)\s+addition/);
       const deletionsMatch = text.match(/(\d+)\s+deletion/);
       const changesMatch = text.match(/(\d+)\s+changes:/);
-      
+
       results.push({
         index: i,
         path,
@@ -52,7 +52,7 @@ async function debugStats() {
         deletionsMatch: deletionsMatch ? deletionsMatch[0] : null,
         changesMatch: changesMatch ? changesMatch[0] : null,
         hasDiffbar: !!container.querySelector('.diffbar'),
-        blobCodeCount: container.querySelectorAll('.blob-code').length
+        blobCodeCount: container.querySelectorAll('.blob-code').length,
       });
     });
 
@@ -73,14 +73,13 @@ async function debugStats() {
   });
 
   console.log('\n');
-  
+
   if (process.env.DEBUG) {
     console.log('⏸️  Browser open for 30s...');
     await new Promise(resolve => setTimeout(resolve, 30000));
   }
-  
+
   await browser.close();
 }
 
 debugStats().catch(console.error);
-

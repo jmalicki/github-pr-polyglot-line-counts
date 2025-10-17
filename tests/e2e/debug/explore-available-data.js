@@ -19,14 +19,14 @@ async function exploreData() {
       `--disable-extensions-except=${extensionPath}`,
       `--load-extension=${extensionPath}`,
       '--no-sandbox',
-      '--window-size=1920,1080'
-    ]
+      '--window-size=1920,1080',
+    ],
   });
 
   const page = await browser.newPage();
-  await page.goto('https://github.com/jmalicki/arsync/pull/55/files', { 
-    waitUntil: 'networkidle2', 
-    timeout: 30000 
+  await page.goto('https://github.com/jmalicki/arsync/pull/55/files', {
+    waitUntil: 'networkidle2',
+    timeout: 30000,
   });
 
   await page.waitForSelector('[data-details-container-group="file"]', { timeout: 15000 });
@@ -38,7 +38,7 @@ async function exploreData() {
       prMetadata: {},
       availableSelectors: new Set(),
       uniqueDataAttrs: new Set(),
-      uniqueClasses: new Set()
+      uniqueClasses: new Set(),
     };
 
     // Check for .gitattributes data
@@ -46,7 +46,7 @@ async function exploreData() {
     if (gitattributesLink) {
       results.gitattributes = {
         exists: true,
-        href: gitattributesLink.href
+        href: gitattributesLink.href,
       };
     }
 
@@ -58,10 +58,10 @@ async function exploreData() {
 
     // Deep dive into file containers
     const containers = document.querySelectorAll('[data-details-container-group="file"]');
-    
+
     containers.forEach((container, idx) => {
       if (idx >= 3) return; // First 3 for brevity
-      
+
       const allAttrs = {};
       Array.from(container.attributes).forEach(attr => {
         allAttrs[attr.name] = attr.value;
@@ -79,28 +79,32 @@ async function exploreData() {
         index: idx,
         filename: container.getAttribute('data-tagsearch-path') || 'unknown',
         allAttributes: allAttrs,
-        fileStatus: container.getAttribute('data-file-deleted') === 'true' ? 'deleted' : 
-                   container.getAttribute('data-file-type') ? 'normal' : 'unknown',
-        
+        fileStatus:
+          container.getAttribute('data-file-deleted') === 'true'
+            ? 'deleted'
+            : container.getAttribute('data-file-type')
+              ? 'normal'
+              : 'unknown',
+
         // Check for linguist-style markers
         hasGeneratedMarker: container.textContent.includes('generated'),
         hasVendoredMarker: container.textContent.includes('vendored'),
-        
+
         // Look for code owner info
         codeowners: container.getAttribute('data-codeowners'),
-        
+
         // Check file type detection
         detectedType: container.getAttribute('data-file-type'),
-        
+
         // Look for diff metadata
         diffMetadata: {
           hasExpandButtons: !!container.querySelector('[data-expand-line]'),
           hasCodeSuggestions: !!container.querySelector('[data-suggestion-path]'),
           hasComments: !!container.querySelector('.review-comment'),
         },
-        
+
         // Extract any special markers from text
-        textMarkers: extractMarkers(container.textContent)
+        textMarkers: extractMarkers(container.textContent),
       };
 
       results.fileContainers.push(fileInfo);
@@ -125,7 +129,7 @@ async function exploreData() {
     return {
       ...results,
       uniqueDataAttrs: Array.from(results.uniqueDataAttrs),
-      uniqueClasses: Array.from(results.uniqueClasses)
+      uniqueClasses: Array.from(results.uniqueClasses),
     };
   });
 
@@ -151,24 +155,26 @@ async function exploreData() {
     console.log(`     Markers: ${file.textMarkers.join(', ') || 'none'}`);
     console.log(`     Has expand buttons: ${file.diffMetadata.hasExpandButtons}`);
     console.log(`     Has comments: ${file.diffMetadata.hasComments}`);
-    
+
     console.log(`     All attributes:`);
-    Object.entries(file.allAttributes).slice(0, 8).forEach(([key, val]) => {
-      const displayVal = val.length > 50 ? val.substring(0, 50) + '...' : val;
-      console.log(`       ${key}: "${displayVal}"`);
-    });
+    Object.entries(file.allAttributes)
+      .slice(0, 8)
+      .forEach(([key, val]) => {
+        const displayVal = val.length > 50 ? val.substring(0, 50) + '...' : val;
+        console.log(`       ${key}: "${displayVal}"`);
+      });
   });
 
   console.log('\n\n🎯 INTERESTING DATA DISCOVERED:');
   console.log('─'.repeat(70));
-  
+
   console.log('\n  ✓ data-file-type: File extension (.rs, .md, etc.)');
   console.log('  ✓ data-file-deleted: Whether file was deleted');
   console.log('  ✓ data-codeowners: Code ownership info');
   console.log('  ✓ data-tagsearch-path: Full file path');
   console.log('  ✓ Text markers: Binary, Large diff, Generated, Vendored, Renamed');
   console.log('  ✓ Diff metadata: Expandable sections, Comments, Suggestions');
-  
+
   if (allData.gitattributes) {
     console.log('  ✓ .gitattributes file exists in repo!');
   }
@@ -181,14 +187,14 @@ async function exploreData() {
   console.log('     • Exclude binary files');
   console.log('     • Show only production code (exclude tests)');
   console.log('     • Filter by code owner');
-  
+
   console.log('\n  📈 Enhanced Statistics:');
   console.log('     • Separate new vs modified vs deleted files');
   console.log('     • Track binary file changes');
   console.log('     • Count files with comments vs without');
   console.log('     • Show test coverage by language');
   console.log('     • Identify large diffs (>500 lines)');
-  
+
   console.log('\n  🏷️  File Classification:');
   console.log('     • Production vs Test vs Config vs Docs');
   console.log('     • Generated vs Hand-written');
@@ -214,9 +220,8 @@ async function exploreData() {
     console.log('⏸️  Browser open for 30s...');
     await new Promise(resolve => setTimeout(resolve, 30000));
   }
-  
+
   await browser.close();
 }
 
 exploreData().catch(console.error);
-

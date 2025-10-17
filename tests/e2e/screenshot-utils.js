@@ -1,6 +1,6 @@
 /**
  * Screenshot Utilities for Puppeteer Tests
- * 
+ *
  * Provides helper functions for taking various types of screenshots
  */
 
@@ -12,7 +12,7 @@ export class ScreenshotHelper {
     this.page = page;
     this.screenshotsDir = screenshotsDir;
     this.counter = 0;
-    
+
     // Ensure directory exists
     if (!fs.existsSync(screenshotsDir)) {
       fs.mkdirSync(screenshotsDir, { recursive: true });
@@ -24,9 +24,9 @@ export class ScreenshotHelper {
    */
   async fullPage(name) {
     const filename = this._getFilename(name);
-    await this.page.screenshot({ 
-      path: filename, 
-      fullPage: true 
+    await this.page.screenshot({
+      path: filename,
+      fullPage: true,
     });
     console.log(`📸 Full page screenshot: ${filename}`);
     return filename;
@@ -37,9 +37,9 @@ export class ScreenshotHelper {
    */
   async viewport(name) {
     const filename = this._getFilename(name);
-    await this.page.screenshot({ 
-      path: filename, 
-      fullPage: false 
+    await this.page.screenshot({
+      path: filename,
+      fullPage: false,
     });
     console.log(`📸 Viewport screenshot: ${filename}`);
     return filename;
@@ -54,7 +54,7 @@ export class ScreenshotHelper {
       console.warn(`⚠️  Element not found: ${selector}`);
       return null;
     }
-    
+
     const filename = this._getFilename(name);
     await element.screenshot({ path: filename });
     console.log(`📸 Element screenshot: ${filename}`);
@@ -65,25 +65,27 @@ export class ScreenshotHelper {
    * Take a screenshot with a highlight around an element
    */
   async elementWithHighlight(selector, name, options = {}) {
-    const {
-      color = 'red',
-      width = 3,
-      padding = 10
-    } = options;
+    const { color = 'red', width = 3, padding = 10 } = options;
 
     // Add highlight
-    await this.page.evaluate((sel, borderColor, borderWidth, pad) => {
-      const element = document.querySelector(sel);
-      if (element) {
-        element.style.outline = `${borderWidth}px solid ${borderColor}`;
-        element.style.outlineOffset = `${pad}px`;
-      }
-    }, selector, color, width, padding);
+    await this.page.evaluate(
+      (sel, borderColor, borderWidth, pad) => {
+        const element = document.querySelector(sel);
+        if (element) {
+          element.style.outline = `${borderWidth}px solid ${borderColor}`;
+          element.style.outlineOffset = `${pad}px`;
+        }
+      },
+      selector,
+      color,
+      width,
+      padding
+    );
 
     const filename = await this.viewport(name);
 
     // Remove highlight
-    await this.page.evaluate((sel) => {
+    await this.page.evaluate(sel => {
       const element = document.querySelector(sel);
       if (element) {
         element.style.outline = '';
@@ -116,9 +118,9 @@ export class ScreenshotHelper {
    */
   async clip(clipRegion, name) {
     const filename = this._getFilename(name);
-    await this.page.screenshot({ 
-      path: filename, 
-      clip: clipRegion 
+    await this.page.screenshot({
+      path: filename,
+      clip: clipRegion,
     });
     console.log(`📸 Clipped screenshot: ${filename}`);
     return filename;
@@ -129,7 +131,7 @@ export class ScreenshotHelper {
    */
   async annotated(name, annotations = []) {
     // Add annotations to page
-    await this.page.evaluate((annots) => {
+    await this.page.evaluate(annots => {
       const container = document.createElement('div');
       container.id = 'puppeteer-annotations';
       container.style.position = 'absolute';
@@ -137,7 +139,7 @@ export class ScreenshotHelper {
       container.style.left = '0';
       container.style.zIndex = '999999';
       container.style.pointerEvents = 'none';
-      
+
       annots.forEach(({ x, y, text, color = 'red' }) => {
         const annotation = document.createElement('div');
         annotation.style.position = 'absolute';
@@ -152,7 +154,7 @@ export class ScreenshotHelper {
         annotation.textContent = text;
         container.appendChild(annotation);
       });
-      
+
       document.body.appendChild(container);
     }, annotations);
 
@@ -181,4 +183,3 @@ export class ScreenshotHelper {
     this.counter = 0;
   }
 }
-

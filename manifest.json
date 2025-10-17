@@ -3,13 +3,8 @@
   "name": "GitHub PR Polyglot Line Counts",
   "version": "0.0.3",
   "description": "Language-aware line count statistics for GitHub pull requests with review time estimates",
-  "permissions": [
-    "storage"
-  ],
-  "host_permissions": [
-    "https://github.com/*",
-    "https://api.github.com/*"
-  ],
+  "permissions": ["storage"],
+  "host_permissions": ["https://github.com/*", "https://api.github.com/*"],
   "content_scripts": [
     {
       "matches": ["https://github.com/*/*/pull/*"],
@@ -24,4 +19,3 @@
     "128": "icons/icon128.png"
   }
 }
-

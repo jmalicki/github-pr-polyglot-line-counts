@@ -1,11 +1,15 @@
 /**
  * Unit tests for language detection and line counting accuracy
- * 
+ *
  * Tests the extension's language detection and counting logic against GitHub API stats
  */
 
 import { describe, it, expect } from 'vitest';
-import { detectLanguageFromFilename, calculateLanguageStats, calculateTotals } from '../../lib/language-detector.js';
+import {
+  detectLanguageFromFilename,
+  calculateLanguageStats,
+  calculateTotals,
+} from '../../lib/language-detector.js';
 
 describe('Language Detection', () => {
   describe('File Extension Mapping', () => {
@@ -58,17 +62,21 @@ describe('Line Count Accuracy - GitHub API Validation', () => {
     // Fetch actual GitHub stats
     const response = await fetch('https://api.github.com/repos/jmalicki/arsync/pulls/55');
     const prData = await response.json();
-    
+
     const expectedTotals = {
       additions: prData.additions,
       deletions: prData.deletions,
-      changedFiles: prData.changed_files
+      changedFiles: prData.changed_files,
     };
 
-    console.log(`\n📊 GitHub API Reports: +${expectedTotals.additions} -${expectedTotals.deletions} (${expectedTotals.changedFiles} files)`);
+    console.log(
+      `\n📊 GitHub API Reports: +${expectedTotals.additions} -${expectedTotals.deletions} (${expectedTotals.changedFiles} files)`
+    );
 
     // Fetch the files in the PR
-    const filesResponse = await fetch('https://api.github.com/repos/jmalicki/arsync/pulls/55/files');
+    const filesResponse = await fetch(
+      'https://api.github.com/repos/jmalicki/arsync/pulls/55/files'
+    );
     const files = await filesResponse.json();
 
     // Calculate stats using our logic
@@ -80,7 +88,9 @@ describe('Line Count Accuracy - GitHub API Validation', () => {
     for (const [language, stats] of languageStats.entries()) {
       console.log(`   ${language}: ${stats.files} files, +${stats.added} -${stats.removed}`);
     }
-    console.log(`   Total: +${totals.totalAdded} -${totals.totalRemoved} (${totals.totalFiles} files)\n`);
+    console.log(
+      `   Total: +${totals.totalAdded} -${totals.totalRemoved} (${totals.totalFiles} files)\n`
+    );
 
     // Validate totals match exactly
     expect(totals.totalAdded).toBe(expectedTotals.additions);
@@ -89,7 +99,9 @@ describe('Line Count Accuracy - GitHub API Validation', () => {
   });
 
   it('should detect all languages in arsync PR #55', async () => {
-    const filesResponse = await fetch('https://api.github.com/repos/jmalicki/arsync/pulls/55/files');
+    const filesResponse = await fetch(
+      'https://api.github.com/repos/jmalicki/arsync/pulls/55/files'
+    );
     const files = await filesResponse.json();
 
     const languageStats = calculateLanguageStats(files);
@@ -98,7 +110,7 @@ describe('Line Count Accuracy - GitHub API Validation', () => {
     // Should detect at least Rust and Markdown
     expect(languages).toContain('Rust');
     expect(languages).toContain('Markdown');
-    
+
     console.log('\n🔍 Detected languages:', languages);
   });
 });
@@ -110,7 +122,7 @@ describe('Stats Aggregation Logic', () => {
       { filename: 'src/lib.rs', additions: 50, deletions: 5 },
       { filename: 'README.md', additions: 20, deletions: 2 },
       { filename: 'docs/guide.md', additions: 30, deletions: 0 },
-      { filename: 'src/utils.py', additions: 40, deletions: 8 }
+      { filename: 'src/utils.py', additions: 40, deletions: 8 },
     ];
 
     const languageStats = calculateLanguageStats(mockFiles);
@@ -119,21 +131,21 @@ describe('Stats Aggregation Logic', () => {
     expect(languageStats.get('Rust')).toEqual({
       added: 150,
       removed: 15,
-      files: 2
+      files: 2,
     });
 
     // Validate Markdown stats
     expect(languageStats.get('Markdown')).toEqual({
       added: 50,
       removed: 2,
-      files: 2
+      files: 2,
     });
 
     // Validate Python stats
     expect(languageStats.get('Python')).toEqual({
       added: 40,
       removed: 8,
-      files: 1
+      files: 1,
     });
 
     // Validate totals
@@ -153,9 +165,7 @@ describe('Stats Aggregation Logic', () => {
   });
 
   it('should handle files with zero changes', () => {
-    const mockFiles = [
-      { filename: 'unchanged.js', additions: 0, deletions: 0 }
-    ];
+    const mockFiles = [{ filename: 'unchanged.js', additions: 0, deletions: 0 }];
 
     const languageStats = calculateLanguageStats(mockFiles);
     const totals = calculateTotals(languageStats);

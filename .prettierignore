@@ -1,0 +1,7 @@
+node_modules
+coverage
+tests/screenshots
+*.md
+LICENSE
+package-lock.json
+

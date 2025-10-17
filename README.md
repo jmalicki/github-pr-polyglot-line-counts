@@ -2,7 +2,7 @@
 
 A Chrome extension that shows line count statistics by programming language for GitHub pull requests - see exactly what languages changed and how long the review will take.
 
-![Language Statistics Panel](tests/screenshots/03-panel-closeup.png)
+![Extension in action on GitHub PR](tests/screenshots/02-language-stats-panel.png)
 
 ## What It Does
 

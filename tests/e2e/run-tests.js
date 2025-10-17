@@ -58,7 +58,7 @@ async function testExtension() {
     console.log(`📄 Navigating to: ${testPR}`);
 
     // Extract PR info for API validation
-    const prMatch = testPR.match(/github\.com\/([^\/]+)\/([^\/]+)\/pull\/(\d+)/);
+    const prMatch = testPR.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
     const [, owner, repo, prNumber] = prMatch;
 
     // Fetch actual GitHub stats via API for validation

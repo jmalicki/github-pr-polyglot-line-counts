@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  detectLanguageFromFilename,
-  calculateLanguageStats,
-  calculateTotals,
-} from '../../lib/language-detector.js';
+import { detectLanguageFromFilename, calculateLanguageStats } from '../../lib/language-detector.js';
 
 describe('Unknown Languages', () => {
   it('should categorize unknown extensions as "Other"', () => {

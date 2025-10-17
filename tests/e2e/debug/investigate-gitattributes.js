@@ -179,7 +179,7 @@ async function investigateGitattributes() {
   console.log('─'.repeat(70));
 
   const prUrl = page.url();
-  const match = prUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/pull/);
+  const match = prUrl.match(/github\.com\/([^/]+)\/([^/]+)\/pull/);
 
   if (match) {
     const [, owner, repo] = match;

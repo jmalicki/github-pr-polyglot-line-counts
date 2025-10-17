@@ -99,7 +99,7 @@ export class ScreenshotHelper {
   /**
    * Take a comparison screenshot (before/after)
    */
-  async comparison(name, beforeAction, afterAction) {
+  async comparison(name, beforeAction, _afterAction) {
     const beforeFilename = this._getFilename(`${name}-before`);
     await this.page.screenshot({ path: beforeFilename, fullPage: false });
     console.log(`📸 Before screenshot: ${beforeFilename}`);

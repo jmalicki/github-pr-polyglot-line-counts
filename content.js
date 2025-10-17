@@ -577,7 +577,7 @@ class GitHubPRLanguageStats {
     return panel;
   }
 
-  async shouldUseAPI(prInfo) {
+  async shouldUseAPI(_prInfo) {
     // Check if this is a large PR that will be lazy-loaded
     // Look for GitHub's "Load diff" buttons or truncation messages
     const loadButtons = document.querySelectorAll(
@@ -660,7 +660,6 @@ class GitHubPRLanguageStats {
       // Calculate stats from API data
       for (const file of allFiles) {
         const language = this.detectLanguageFromFilename(file.filename);
-        const stats = this.calculateFileStats(file);
 
         if (!this.languageStats.has(language)) {
           this.languageStats.set(language, { added: 0, removed: 0, files: 0 });
@@ -801,7 +800,7 @@ let apiDataPromise = null;
 
 function startEarlyAPIFetch() {
   // Parse URL to get PR info (no DOM needed!)
-  const match = window.location.pathname.match(/\/([^\/]+)\/([^\/]+)\/pull\/(\d+)/);
+  const match = window.location.pathname.match(/\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
   if (!match) return;
 
   const [, owner, repo, prNumber] = match;

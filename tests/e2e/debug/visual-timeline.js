@@ -92,7 +92,7 @@ async function captureVisualTimeline() {
   await capture('03-after-skeleton-time');
 
   // Check if panel exists
-  let panelExists = await page.$('#pr-language-stats-panel');
+  const panelExists = await page.$('#pr-language-stats-panel');
   if (panelExists) {
     console.log('   ✅ Panel exists at this point');
     await capture('04-panel-exists');

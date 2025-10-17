@@ -6,7 +6,13 @@ A Chrome extension that shows line count statistics by programming language for 
 
 ## What It Does
 
-Like "Better Line Counts" but shows **which languages** changed, not just totals.
+Like [Better Line Counts](https://chromewebstore.google.com/detail/github-better-line-counts/ocfdgncpifmegplaglcnglhioflaimkd) but shows **which languages** changed, not just totals.
+
+I was inspired by that extension, but I have been reviewing a lot of AI-generated code, and to keep AI on the rails, it generates
+a *ton* of docs it refers back to to keep it from being stupid.   I don't quite want to mark those as generated, because they are
+real and I do want to review them, but I do want to know how much AI design doc/implementation breadcrumbs I am looking at vs. code,
+as the former is super easy to skim, but I want to really watch out for the code AI generated, so this gives me a much better
+idea at what I'm looking at for review complexity and if it needs to be split.
 
 ## Features
 

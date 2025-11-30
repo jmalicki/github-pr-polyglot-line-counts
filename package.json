@@ -9,14 +9,20 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
+    "test:visibility": "tsx tests/intermittent/panel-visibility.test.ts",
+    "test:stability": "tsx tests/intermittent/page-stability-race.test.ts",
+    "test:concurrent": "tsx tests/intermittent/concurrent-analyze.test.ts",
+    "test:api-reuse": "tsx tests/intermittent/api-promise-reuse.test.ts",
+    "test:reinjection": "tsx tests/intermittent/script-reinjection.test.ts",
+    "test:intermittent": "npm run test:visibility -- --env ITERATIONS=20",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"**/*.{js,json,css}\"",
-    "format:check": "prettier --check \"**/*.{js,json,css}\"",
+    "format": "prettier --write \"**/*.{js,json,css,ts}\"",
+    "format:check": "prettier --check \"**/*.{js,json,css,ts}\"",
     "prepare": "husky"
   },
   "lint-staged": {
-    "*.js": [
+    "*.{js,ts}": [
       "eslint --fix",
       "prettier --write"
     ],
@@ -35,12 +41,15 @@
   "license": "MIT",
   "devDependencies": {
     "@eslint/js": "^9.37.0",
+    "@types/node": "^24.10.1",
     "@vitest/ui": "^3.2.4",
     "eslint": "^9.37.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.4",
     "prettier": "^3.6.2",
     "puppeteer": "^24.25.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "type": "module"

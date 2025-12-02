@@ -19,10 +19,11 @@
  * 4. Test with iframes if present
  */
 
-import puppeteer, { Browser } from 'puppeteer';
+import puppeteer, { Browser, Page } from 'puppeteer';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import { getFilesUrl, getExtensionStats, ExtensionStats } from './test-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,7 +38,7 @@ interface PanelState {
   panelCount: number;
   hasTable: boolean;
   hasError: boolean;
-  stats: { added: number; removed: number } | null;
+  stats: ExtensionStats | null;
 }
 
 interface NavigationResult {
@@ -49,6 +50,35 @@ interface NavigationResult {
 }
 
 /**
+ * Get panel state including panel count (for detecting duplicates)
+ */
+async function getPanelStateWithCount(page: Page): Promise<PanelState> {
+  return page.evaluate((): PanelState => {
+    const panels = document.querySelectorAll('#pr-language-stats-panel');
+    const panel = panels[0];
+    const totalRow = panel?.querySelector('.total-row');
+
+    return {
+      panelCount: panels.length,
+      hasTable: !!panel?.querySelector('table'),
+      hasError: !!panel?.querySelector('.flash-error'),
+      stats: totalRow
+        ? {
+            added: parseInt(
+              totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0',
+              10
+            ),
+            removed: parseInt(
+              totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0',
+              10
+            ),
+          }
+        : null,
+    };
+  });
+}
+
+/**
  * Test 1: SPA-style navigation (within GitHub)
  */
 async function testSPANavigation(browser: Browser): Promise<NavigationResult> {
@@ -56,89 +86,74 @@ async function testSPANavigation(browser: Browser): Promise<NavigationResult> {
   console.log('─'.repeat(60));
 
   const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
 
-  const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
-  const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
+  try {
+    await page.setViewport({ width: 1920, height: 1080 });
 
-  // Initial load
-  console.log(`   Loading: ${filesUrl}`);
-  await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-  await page.waitForSelector('#pr-language-stats-panel', { timeout: 15000 });
-  await new Promise(resolve => setTimeout(resolve, 2000));
+    const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
+    const filesUrl = getFilesUrl(testPR);
 
-  const getPanelState = async (): Promise<PanelState> => {
-    return page.evaluate((): PanelState => {
-      const panels = document.querySelectorAll('#pr-language-stats-panel');
-      const panel = panels[0];
-      const totalRow = panel?.querySelector('.total-row');
+    // Initial load
+    console.log(`   Loading: ${filesUrl}`);
+    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.waitForSelector('#pr-language-stats-panel', { timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-      return {
-        panelCount: panels.length,
-        hasTable: !!panel?.querySelector('table'),
-        hasError: !!panel?.querySelector('.flash-error'),
-        stats: totalRow
-          ? {
-              added: parseInt(
-                totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-              ),
-              removed: parseInt(
-                totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-              ),
-            }
-          : null,
-      };
-    });
-  };
+    const initialState = await getPanelStateWithCount(page);
+    console.log(
+      `   Initial: ${initialState.panelCount} panel(s), stats: +${initialState.stats?.added} -${initialState.stats?.removed}`
+    );
 
-  const initialState = await getPanelState();
-  console.log(`   Initial: ${initialState.panelCount} panel(s), stats: +${initialState.stats?.added} -${initialState.stats?.removed}`);
+    // Navigate to PR conversation tab (SPA navigation)
+    console.log('   Navigating to Conversation tab...');
+    const conversationUrl = testPR.replace('/files', '');
+    await page.goto(conversationUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-  // Navigate to PR conversation tab (SPA navigation)
-  console.log('   Navigating to Conversation tab...');
-  const conversationUrl = testPR.replace('/files', '');
-  await page.goto(conversationUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-  await new Promise(resolve => setTimeout(resolve, 2000));
+    const afterNavigateAway = await getPanelStateWithCount(page);
+    console.log(`   After nav away: ${afterNavigateAway.panelCount} panel(s)`);
 
-  const afterNavigateAway = await getPanelState();
-  console.log(`   After nav away: ${afterNavigateAway.panelCount} panel(s)`);
+    // Navigate back to Files tab
+    console.log('   Navigating back to Files tab...');
+    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.waitForSelector('#pr-language-stats-panel', { timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
-  // Navigate back to Files tab
-  console.log('   Navigating back to Files tab...');
-  await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-  await page.waitForSelector('#pr-language-stats-panel', { timeout: 15000 });
-  await new Promise(resolve => setTimeout(resolve, 3000));
+    const afterNavigateBack = await getPanelStateWithCount(page);
+    console.log(
+      `   After nav back: ${afterNavigateBack.panelCount} panel(s), stats: +${afterNavigateBack.stats?.added} -${afterNavigateBack.stats?.removed}`
+    );
 
-  const afterNavigateBack = await getPanelState();
-  console.log(`   After nav back: ${afterNavigateBack.panelCount} panel(s), stats: +${afterNavigateBack.stats?.added} -${afterNavigateBack.stats?.removed}`);
+    // Check for issues
+    const duplicatePanelsDetected = afterNavigateBack.panelCount > 1;
+    const stateCorrupted =
+      initialState.stats &&
+      afterNavigateBack.stats &&
+      (initialState.stats.added !== afterNavigateBack.stats.added ||
+        initialState.stats.removed !== afterNavigateBack.stats.removed);
 
-  // Check for issues
-  const duplicatePanelsDetected = afterNavigateBack.panelCount > 1;
-  const stateCorrupted =
-    initialState.stats &&
-    afterNavigateBack.stats &&
-    (initialState.stats.added !== afterNavigateBack.stats.added ||
-      initialState.stats.removed !== afterNavigateBack.stats.removed);
+    if (duplicatePanelsDetected) {
+      console.log(
+        `\n   ❌ DUPLICATE PANELS DETECTED: ${afterNavigateBack.panelCount} panels found!`
+      );
+    }
+    if (stateCorrupted) {
+      console.log(`\n   ❌ STATE CORRUPTED: Stats changed after navigation`);
+    }
+    if (!duplicatePanelsDetected && !stateCorrupted) {
+      console.log(`\n   ✅ Navigation handled correctly`);
+    }
 
-  if (duplicatePanelsDetected) {
-    console.log(`\n   ❌ DUPLICATE PANELS DETECTED: ${afterNavigateBack.panelCount} panels found!`);
+    return {
+      initialState,
+      afterNavigateAway,
+      afterNavigateBack,
+      duplicatePanelsDetected,
+      stateCorrupted: !!stateCorrupted,
+    };
+  } finally {
+    await page.close();
   }
-  if (stateCorrupted) {
-    console.log(`\n   ❌ STATE CORRUPTED: Stats changed after navigation`);
-  }
-  if (!duplicatePanelsDetected && !stateCorrupted) {
-    console.log(`\n   ✅ Navigation handled correctly`);
-  }
-
-  await page.close();
-
-  return {
-    initialState,
-    afterNavigateAway,
-    afterNavigateBack,
-    duplicatePanelsDetected,
-    stateCorrupted: !!stateCorrupted,
-  };
 }
 
 /**
@@ -152,70 +167,51 @@ async function testBackForwardNavigation(browser: Browser): Promise<{
   console.log('─'.repeat(60));
 
   const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
 
-  const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
-  const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
+  try {
+    await page.setViewport({ width: 1920, height: 1080 });
 
-  // Load Files tab
-  console.log(`   Loading: ${filesUrl}`);
-  await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-  await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
-  await new Promise(resolve => setTimeout(resolve, 2000));
+    const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
+    const filesUrl = getFilesUrl(testPR);
 
-  const initialStats = await page.evaluate(() => {
-    const totalRow = document.querySelector('#pr-language-stats-panel .total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
-  console.log(`   Initial stats: +${initialStats?.added} -${initialStats?.removed}`);
+    // Load Files tab
+    console.log(`   Loading: ${filesUrl}`);
+    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-  // Navigate to Conversation tab
-  const conversationUrl = testPR.replace('/files', '');
-  await page.goto(conversationUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-  await new Promise(resolve => setTimeout(resolve, 1000));
+    const initialStats = await getExtensionStats(page);
+    console.log(`   Initial stats: +${initialStats?.added} -${initialStats?.removed}`);
 
-  // Use browser back
-  console.log('   Pressing browser back...');
-  await page.goBack({ waitUntil: 'networkidle2' });
-  await new Promise(resolve => setTimeout(resolve, 3000));
+    // Navigate to Conversation tab
+    const conversationUrl = testPR.replace('/files', '');
+    await page.goto(conversationUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-  const panelCountAfterBack = await page.evaluate(() => {
-    return document.querySelectorAll('#pr-language-stats-panel').length;
-  });
+    // Use browser back
+    console.log('   Pressing browser back...');
+    await page.goBack({ waitUntil: 'networkidle2' });
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
-  const statsAfterBack = await page.evaluate(() => {
-    const totalRow = document.querySelector('#pr-language-stats-panel .total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
+    const panelCountAfterBack = await page.evaluate(() => {
+      return document.querySelectorAll('#pr-language-stats-panel').length;
+    });
 
-  console.log(`   Panel count after back: ${panelCountAfterBack}`);
-  console.log(`   Stats after back: +${statsAfterBack?.added} -${statsAfterBack?.removed}`);
+    const statsAfterBack = await getExtensionStats(page);
 
-  const statsConsistent =
-    initialStats?.added === statsAfterBack?.added &&
-    initialStats?.removed === statsAfterBack?.removed;
+    console.log(`   Panel count after back: ${panelCountAfterBack}`);
+    console.log(`   Stats after back: +${statsAfterBack?.added} -${statsAfterBack?.removed}`);
 
-  console.log(`   Stats consistent: ${statsConsistent ? '✅' : '❌'}`);
+    const statsConsistent =
+      initialStats?.added === statsAfterBack?.added &&
+      initialStats?.removed === statsAfterBack?.removed;
 
-  await page.close();
+    console.log(`   Stats consistent: ${statsConsistent ? '✅' : '❌'}`);
 
-  return { panelCountAfterBack, statsConsistent };
+    return { panelCountAfterBack, statsConsistent };
+  } finally {
+    await page.close();
+  }
 }
 
 /**
@@ -230,54 +226,57 @@ async function testGlobalVariables(browser: Browser): Promise<{
   console.log('─'.repeat(60));
 
   const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
 
-  const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
-  const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
+  try {
+    await page.setViewport({ width: 1920, height: 1080 });
 
-  await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-  await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
-  await new Promise(resolve => setTimeout(resolve, 2000));
+    const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
+    const filesUrl = getFilesUrl(testPR);
 
-  // Check global variables (these are in the content script's isolated world,
-  // so we can't access them directly - this is a limitation)
-  // Instead, we check for symptoms of multiple instances
+    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-  const panelCount = await page.evaluate(() => {
-    return document.querySelectorAll('#pr-language-stats-panel').length;
-  });
+    // Check global variables (these are in the content script's isolated world,
+    // so we can't access them directly - this is a limitation)
+    // Instead, we check for symptoms of multiple instances
 
-  console.log(`   Panel count: ${panelCount}`);
+    const panelCount = await page.evaluate(() => {
+      return document.querySelectorAll('#pr-language-stats-panel').length;
+    });
 
-  // Check console for duplicate initialization messages
-  const consoleLogs: string[] = [];
-  page.on('console', msg => {
-    if (msg.text().includes('PR Lang Stats')) {
-      consoleLogs.push(msg.text());
-    }
-  });
+    console.log(`   Panel count: ${panelCount}`);
 
-  // Refresh to trigger re-initialization
-  await page.reload({ waitUntil: 'networkidle2' });
-  await new Promise(resolve => setTimeout(resolve, 3000));
+    // Check console for duplicate initialization messages
+    const consoleLogs: string[] = [];
+    page.on('console', msg => {
+      if (msg.text().includes('PR Lang Stats')) {
+        consoleLogs.push(msg.text());
+      }
+    });
 
-  const panelCountAfterRefresh = await page.evaluate(() => {
-    return document.querySelectorAll('#pr-language-stats-panel').length;
-  });
+    // Refresh to trigger re-initialization
+    await page.reload({ waitUntil: 'networkidle2' });
+    await new Promise(resolve => setTimeout(resolve, 3000));
 
-  console.log(`   Panel count after refresh: ${panelCountAfterRefresh}`);
+    const panelCountAfterRefresh = await page.evaluate(() => {
+      return document.querySelectorAll('#pr-language-stats-panel').length;
+    });
 
-  // Check for multiple "Starting analysis" messages
-  const initMessages = consoleLogs.filter(log => log.includes('ANALYZE START'));
-  console.log(`   Initialization messages: ${initMessages.length}`);
+    console.log(`   Panel count after refresh: ${panelCountAfterRefresh}`);
 
-  await page.close();
+    // Check for multiple "Starting analysis" messages
+    const initMessages = consoleLogs.filter(log => log.includes('ANALYZE START'));
+    console.log(`   Initialization messages: ${initMessages.length}`);
 
-  return {
-    extensionInstanceExists: panelCount > 0,
-    apiDataPromiseCleared: true, // Can't directly check, assume true
-    multipleInstances: panelCountAfterRefresh > 1 || initMessages.length > 1,
-  };
+    return {
+      extensionInstanceExists: panelCount > 0,
+      apiDataPromiseCleared: true, // Can't directly check, assume true
+      multipleInstances: panelCountAfterRefresh > 1 || initMessages.length > 1,
+    };
+  } finally {
+    await page.close();
+  }
 }
 
 /**

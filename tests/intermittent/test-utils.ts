@@ -157,10 +157,7 @@ export async function getPanelState(page: Page): Promise<{
 /**
  * Wait for extension panel to be ready with stats
  */
-export async function waitForExtensionPanel(
-  page: Page,
-  timeout = 15000
-): Promise<boolean> {
+export async function waitForExtensionPanel(page: Page, timeout = 15000): Promise<boolean> {
   try {
     await page.waitForSelector('#pr-language-stats-panel table', { timeout });
     return true;

@@ -99,7 +99,9 @@ async function testApiPromiseClearing(browser: Browser): Promise<PromiseClearing
     );
     const fetchedFromAPIAgain = consoleLogs.some(log => log.includes('Fetching from API now'));
 
-    console.log(`   Second analysis used early fetch: ${secondUsedEarlyFetch ? '⚠️ YES' : '✅ NO'}`);
+    console.log(
+      `   Second analysis used early fetch: ${secondUsedEarlyFetch ? '⚠️ YES' : '✅ NO'}`
+    );
     console.log(`   Second analysis fetched from API again: ${fetchedFromAPIAgain ? '✅' : '❌'}`);
 
     // Get second stats

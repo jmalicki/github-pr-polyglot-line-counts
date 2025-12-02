@@ -82,6 +82,54 @@ jobs:
           path: tests/screenshots/
           if-no-files-found: ignore
 
+  intermittent-diagnostics:
+    name: Intermittent Behavior Diagnostics
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run panel visibility diagnostic (5 iterations)
+        run: ITERATIONS=5 npm run test:visibility
+        env:
+          TEST_PR_URL: 'https://github.com/jmalicki/arsync/pull/55/files'
+
+      - name: Run page stability race test
+        run: npm run test:stability
+        env:
+          TEST_PR_URL: 'https://github.com/jmalicki/arsync/pull/55/files'
+
+      - name: Run concurrent analyze test
+        run: npm run test:concurrent
+        env:
+          TEST_PR_URL: 'https://github.com/jmalicki/arsync/pull/55/files'
+
+      - name: Run API promise reuse test
+        run: npm run test:api-reuse
+        env:
+          TEST_PR_URL: 'https://github.com/jmalicki/arsync/pull/55/files'
+
+      - name: Run script reinjection test
+        run: npm run test:reinjection
+        env:
+          TEST_PR_URL: 'https://github.com/jmalicki/arsync/pull/55/files'
+
+      - name: Upload diagnostic screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-screenshots
+          path: tests/screenshots/
+          if-no-files-found: ignore
+
   build:
     name: Build Check
     runs-on: ubuntu-latest

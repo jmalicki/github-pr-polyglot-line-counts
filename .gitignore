@@ -16,7 +16,6 @@ Thumbs.db
 
 # Node
 node_modules/
-package-lock.json
 
 # Test outputs
 tests/screenshots/

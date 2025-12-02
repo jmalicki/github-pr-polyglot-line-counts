@@ -18,10 +18,11 @@
  * 3. Identify which stage fails most often
  */
 
-import puppeteer, { Browser, Page, ConsoleMessage } from 'puppeteer';
+import puppeteer, { Browser, ConsoleMessage } from 'puppeteer';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import { getFilesUrl, getPanelState } from './test-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -66,100 +67,81 @@ async function runSingleIteration(
   testPR: string
 ): Promise<IterationResult> {
   const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
-
-  const consoleLogs: string[] = [];
-  page.on('console', (msg: ConsoleMessage) => {
-    const text = msg.text();
-    if (text.includes('PR Lang Stats')) {
-      consoleLogs.push(text);
-    }
-  });
-
-  const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
-  const startTime = Date.now();
 
   try {
-    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-  } catch (e) {
-    console.log(`   Iteration ${iteration}: Navigation timeout`);
-  }
+    await page.setViewport({ width: 1920, height: 1080 });
 
-  // Wait a bit for extension to initialize
-  await new Promise(resolve => setTimeout(resolve, 5000));
+    const consoleLogs: string[] = [];
+    page.on('console', (msg: ConsoleMessage) => {
+      const text = msg.text();
+      if (text.includes('PR Lang Stats')) {
+        consoleLogs.push(text);
+      }
+    });
 
-  const loadTimeMs = Date.now() - startTime;
+    const filesUrl = getFilesUrl(testPR);
+    const startTime = Date.now();
 
-  // Check what selectors are present
-  const selectors = await page.evaluate(() => {
-    return {
-      prHeaderFound: !!document.querySelector('.gh-header-meta, [data-hpc]'),
-      fileContainersCount: document.querySelectorAll('[data-details-container-group="file"]').length,
-      diffContainerFound: !!document.querySelector(
-        '.diff-view, .js-diff-progressive-container, [data-hpc], .file-header, .file'
-      ),
-    };
-  });
-
-  // Check panel state
-  const panelState = await page.evaluate(() => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-    if (!panel) {
-      return {
-        panelFound: false,
-        hasStats: false,
-        hasTable: false,
-        hasError: false,
-        errorMessage: undefined,
-      };
+    try {
+      await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    } catch {
+      console.log(`   Iteration ${iteration}: Navigation timeout`);
     }
 
-    const table = panel.querySelector('table');
-    const error = panel.querySelector('.flash-error');
-    const totalRow = panel.querySelector('.total-row');
+    // Wait a bit for extension to initialize
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    const loadTimeMs = Date.now() - startTime;
+
+    // Check what selectors are present
+    const selectors = await page.evaluate(() => {
+      return {
+        prHeaderFound: !!document.querySelector('.gh-header-meta, [data-hpc]'),
+        fileContainersCount: document.querySelectorAll('[data-details-container-group="file"]')
+          .length,
+        diffContainerFound: !!document.querySelector(
+          '.diff-view, .js-diff-progressive-container, [data-hpc], .file-header, .file'
+        ),
+      };
+    });
+
+    // Check panel state using shared utility
+    const panelState = await getPanelState(page);
+
+    // Analyze console logs to determine which stages completed
+    const stages: InitStage = {
+      skeletonInjected: consoleLogs.some(log => log.includes('Skeleton placeholder injected')),
+      earlyFetchStarted: consoleLogs.some(log => log.includes('Starting early API fetch')),
+      waitForPRPageCompleted:
+        consoleLogs.some(log => log.includes('file containers (stable)')) ||
+        consoleLogs.some(log => log.includes('PR page detected (fallback selector)')) ||
+        consoleLogs.some(log => log.includes('Timeout waiting for stable file count')),
+      analyzeStarted: consoleLogs.some(log => log.includes('ANALYZE START')),
+      analyzeCompleted:
+        consoleLogs.some(log => log.includes('ANALYZE COMPLETE')) ||
+        consoleLogs.some(log => log.includes('Showing error')),
+      displayStatsCalled: consoleLogs.some(log => log.includes('displayStats() called')),
+      panelVisible: panelState.panelFound,
+      hasTable: panelState.hasTable,
+      hasError: panelState.hasError,
+      errorMessage: panelState.errorMessage,
+    };
+
+    const success = panelState.panelFound && !!panelState.stats;
 
     return {
-      panelFound: true,
-      hasStats: !!totalRow,
-      hasTable: !!table,
-      hasError: !!error,
-      errorMessage: error?.textContent?.trim(),
+      iteration,
+      success,
+      panelFound: panelState.panelFound,
+      hasStats: !!panelState.stats,
+      stages,
+      consoleLogs,
+      loadTimeMs,
+      selectors,
     };
-  });
-
-  // Analyze console logs to determine which stages completed
-  const stages: InitStage = {
-    skeletonInjected: consoleLogs.some(log => log.includes('Skeleton placeholder injected')),
-    earlyFetchStarted: consoleLogs.some(log => log.includes('Starting early API fetch')),
-    waitForPRPageCompleted:
-      consoleLogs.some(log => log.includes('file containers (stable)')) ||
-      consoleLogs.some(log => log.includes('PR page detected (fallback selector)')) ||
-      consoleLogs.some(log => log.includes('Timeout waiting for stable file count')),
-    analyzeStarted: consoleLogs.some(log => log.includes('ANALYZE START')),
-    analyzeCompleted:
-      consoleLogs.some(log => log.includes('ANALYZE COMPLETE')) ||
-      consoleLogs.some(log => log.includes('Showing error')),
-    displayStatsCalled: consoleLogs.some(log => log.includes('displayStats() called')),
-    panelVisible: panelState.panelFound,
-    hasTable: panelState.hasTable,
-    hasError: panelState.hasError,
-    errorMessage: panelState.errorMessage,
-  };
-
-  const success = panelState.panelFound && panelState.hasStats;
-
-  await page.close();
-
-  return {
-    iteration,
-    success,
-    panelFound: panelState.panelFound,
-    hasStats: panelState.hasStats,
-    stages,
-    consoleLogs,
-    loadTimeMs,
-    selectors,
-  };
+  } finally {
+    await page.close();
+  }
 }
 
 async function testPanelVisibility(iterations = 10): Promise<void> {

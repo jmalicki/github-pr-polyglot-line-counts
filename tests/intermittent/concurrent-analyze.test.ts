@@ -24,6 +24,14 @@ import puppeteer, { Browser } from 'puppeteer';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import {
+  ExtensionStats,
+  parsePRUrl,
+  fetchAllPRFiles,
+  calculateExpectedStats,
+  getExtensionStats,
+  getFilesUrl,
+} from './test-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -32,11 +40,6 @@ const resultsDir = join(__dirname, 'results');
 
 if (!fs.existsSync(resultsDir)) {
   fs.mkdirSync(resultsDir, { recursive: true });
-}
-
-interface ExtensionStats {
-  added: number;
-  removed: number;
 }
 
 interface StatsSnapshot {
@@ -62,165 +65,132 @@ async function testRapidCheckboxToggle(browser: Browser): Promise<RapidToggleRes
   console.log('─'.repeat(60));
 
   const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
 
-  const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
-  const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
+  try {
+    await page.setViewport({ width: 1920, height: 1080 });
 
-  // Get expected stats from API
-  const prMatch = testPR.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
-  if (!prMatch) throw new Error('Invalid PR URL');
-  const [, owner, repo, prNumber] = prMatch;
+    const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
+    const filesUrl = getFilesUrl(testPR);
 
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`;
-  const apiResponse = await fetch(apiUrl);
-  const files = await apiResponse.json();
-  const expectedStats = files.reduce(
-    (acc: ExtensionStats, f: any) => ({
-      added: acc.added + f.additions,
-      removed: acc.removed + f.deletions,
-    }),
-    { added: 0, removed: 0 }
-  );
+    // Get expected stats from API with pagination
+    const prInfo = parsePRUrl(testPR);
+    const files = await fetchAllPRFiles(prInfo);
+    const expectedStats = calculateExpectedStats(files);
 
-  console.log(`   Loading: ${filesUrl}`);
-  await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    console.log(`   Loading: ${filesUrl}`);
+    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-  // Wait for initial analysis
-  await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
-  await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for initial analysis
+    await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-  // Get initial stats
-  const initialStats = await page.evaluate((): ExtensionStats | null => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-    const totalRow = panel?.querySelector('.total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
-  console.log(`   Initial stats: +${initialStats?.added} -${initialStats?.removed}`);
+    // Get initial stats
+    const initialStats = await getExtensionStats(page);
+    console.log(`   Initial stats: +${initialStats?.added} -${initialStats?.removed}`);
 
-  // Set up stats observer
-  await page.evaluate(() => {
-    (window as any).__statsSnapshots = [];
+    // Set up stats observer
+    await page.evaluate(() => {
+      (window as any).__statsSnapshots = [];
 
-    const observer = new MutationObserver(() => {
+      const observer = new MutationObserver(() => {
+        const panel = document.querySelector('#pr-language-stats-panel');
+        const totalRow = panel?.querySelector('.total-row');
+        const checkbox = document.querySelector(
+          '#exclude-generated-checkbox'
+        ) as HTMLInputElement | null;
+
+        if (totalRow) {
+          (window as any).__statsSnapshots.push({
+            timestamp: Date.now(),
+            stats: {
+              added: parseInt(
+                totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
+              ),
+              removed: parseInt(
+                totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
+              ),
+            },
+            checkboxState: checkbox?.checked || false,
+          });
+        }
+      });
+
       const panel = document.querySelector('#pr-language-stats-panel');
-      const totalRow = panel?.querySelector('.total-row');
-      const checkbox = document.querySelector(
-        '#exclude-generated-checkbox'
-      ) as HTMLInputElement | null;
-
-      if (totalRow) {
-        (window as any).__statsSnapshots.push({
-          timestamp: Date.now(),
-          stats: {
-            added: parseInt(
-              totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-            ),
-            removed: parseInt(
-              totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-            ),
-          },
-          checkboxState: checkbox?.checked || false,
+      if (panel) {
+        observer.observe(panel, {
+          childList: true,
+          subtree: true,
+          characterData: true,
         });
       }
+
+      (window as any).__stopStatsObserver = () => observer.disconnect();
     });
 
-    const panel = document.querySelector('#pr-language-stats-panel');
-    if (panel) {
-      observer.observe(panel, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
+    // Rapidly toggle checkbox 10 times with minimal delay
+    console.log('   Rapidly toggling checkbox 10 times...');
+    for (let i = 0; i < 10; i++) {
+      await page.click('#exclude-generated-checkbox');
+      // Minimal delay - we want to trigger race conditions
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
-    (window as any).__stopStatsObserver = () => observer.disconnect();
-  });
+    // Wait for all analyses to complete
+    console.log('   Waiting for analyses to complete...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
-  // Rapidly toggle checkbox 10 times with minimal delay
-  console.log('   Rapidly toggling checkbox 10 times...');
-  for (let i = 0; i < 10; i++) {
-    await page.click('#exclude-generated-checkbox');
-    // Minimal delay - we want to trigger race conditions
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
+    // Collect snapshots
+    const snapshots: StatsSnapshot[] = await page.evaluate(() => {
+      (window as any).__stopStatsObserver();
+      return (window as any).__statsSnapshots;
+    });
 
-  // Wait for all analyses to complete
-  console.log('   Waiting for analyses to complete...');
-  await new Promise(resolve => setTimeout(resolve, 5000));
+    // Get final stats
+    const finalStats = await getExtensionStats(page);
+    console.log(`   Final stats: +${finalStats?.added} -${finalStats?.removed}`);
+    console.log(`   Stats snapshots captured: ${snapshots.length}`);
 
-  // Collect snapshots
-  const snapshots: StatsSnapshot[] = await page.evaluate(() => {
-    (window as any).__stopStatsObserver();
-    return (window as any).__statsSnapshots;
-  });
+    // Analyze snapshots for race conditions
+    let raceConditionDetected = false;
+    const unexpectedValues: StatsSnapshot[] = [];
 
-  // Get final stats
-  const finalStats = await page.evaluate((): ExtensionStats | null => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-    const totalRow = panel?.querySelector('.total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
+    for (const snapshot of snapshots) {
+      // With checkbox unchecked, should match expectedStats
+      // With checkbox checked, may differ (excluding generated files)
+      // But should never have completely wrong values
+      if (snapshot.stats) {
+        const isWildlyOff =
+          Math.abs(snapshot.stats.added - expectedStats.added) > expectedStats.added * 0.5 ||
+          Math.abs(snapshot.stats.removed - expectedStats.removed) > expectedStats.removed * 0.5;
 
-  console.log(`   Final stats: +${finalStats?.added} -${finalStats?.removed}`);
-  console.log(`   Stats snapshots captured: ${snapshots.length}`);
-
-  // Analyze snapshots for race conditions
-  let raceConditionDetected = false;
-  const unexpectedValues: StatsSnapshot[] = [];
-
-  for (const snapshot of snapshots) {
-    // With checkbox unchecked, should match expectedStats
-    // With checkbox checked, may differ (excluding generated files)
-    // But should never have completely wrong values
-    if (snapshot.stats) {
-      const isWildlyOff =
-        Math.abs(snapshot.stats.added - expectedStats.added) > expectedStats.added * 0.5 ||
-        Math.abs(snapshot.stats.removed - expectedStats.removed) > expectedStats.removed * 0.5;
-
-      if (isWildlyOff && !snapshot.checkboxState) {
-        unexpectedValues.push(snapshot);
-        raceConditionDetected = true;
+        if (isWildlyOff && !snapshot.checkboxState) {
+          unexpectedValues.push(snapshot);
+          raceConditionDetected = true;
+        }
       }
     }
+
+    if (raceConditionDetected) {
+      console.log(`\n   ❌ RACE CONDITION DETECTED!`);
+      console.log(`   Unexpected values found:`, unexpectedValues);
+    }
+
+    // Check final consistency
+    const consistent =
+      finalStats?.added === expectedStats.added && finalStats?.removed === expectedStats.removed;
+    console.log(`\n   Final stats match expected: ${consistent ? '✅' : '❌'}`);
+
+    return {
+      initialStats,
+      snapshots,
+      finalStats,
+      expectedStats,
+      consistent,
+      raceConditionDetected,
+    };
+  } finally {
+    await page.close();
   }
-
-  if (raceConditionDetected) {
-    console.log(`\n   ❌ RACE CONDITION DETECTED!`);
-    console.log(`   Unexpected values found:`, unexpectedValues);
-  }
-
-  // Check final consistency
-  const consistent =
-    finalStats?.added === expectedStats.added && finalStats?.removed === expectedStats.removed;
-  console.log(`\n   Final stats match expected: ${consistent ? '✅' : '❌'}`);
-
-  await page.close();
-
-  return {
-    initialStats,
-    snapshots,
-    finalStats,
-    expectedStats,
-    consistent,
-    raceConditionDetected,
-  };
 }
 
 /**
@@ -235,71 +205,48 @@ async function testDoubleClickRace(browser: Browser): Promise<{
   console.log('─'.repeat(60));
 
   const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
 
-  const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
-  const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
+  try {
+    await page.setViewport({ width: 1920, height: 1080 });
 
-  await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-  await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
-  await new Promise(resolve => setTimeout(resolve, 2000));
+    const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
+    const filesUrl = getFilesUrl(testPR);
 
-  // Get stats before double-click
-  const firstStats = await page.evaluate((): ExtensionStats | null => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-    const totalRow = panel?.querySelector('.total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
+    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-  console.log(`   Stats before: +${firstStats?.added} -${firstStats?.removed}`);
+    // Get stats before double-click
+    const firstStats = await getExtensionStats(page);
+    console.log(`   Stats before: +${firstStats?.added} -${firstStats?.removed}`);
 
-  // Simulate double-click on checkbox (two rapid clicks)
-  console.log('   Simulating double-click on checkbox...');
-  await page.evaluate(() => {
-    const checkbox = document.querySelector('#exclude-generated-checkbox') as HTMLInputElement;
-    if (checkbox) {
-      // Two clicks in rapid succession
-      checkbox.click();
-      checkbox.click();
-    }
-  });
+    // Simulate double-click on checkbox (two rapid clicks)
+    console.log('   Simulating double-click on checkbox...');
+    await page.evaluate(() => {
+      const checkbox = document.querySelector('#exclude-generated-checkbox') as HTMLInputElement;
+      if (checkbox) {
+        // Two clicks in rapid succession
+        checkbox.click();
+        checkbox.click();
+      }
+    });
 
-  // Wait for analyses
-  await new Promise(resolve => setTimeout(resolve, 5000));
+    // Wait for analyses
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
-  // Get stats after
-  const secondStats = await page.evaluate((): ExtensionStats | null => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-    const totalRow = panel?.querySelector('.total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
+    // Get stats after
+    const secondStats = await getExtensionStats(page);
+    console.log(`   Stats after: +${secondStats?.added} -${secondStats?.removed}`);
 
-  console.log(`   Stats after: +${secondStats?.added} -${secondStats?.removed}`);
+    // Should be the same (double-click = no net change in checkbox state)
+    const consistent =
+      firstStats?.added === secondStats?.added && firstStats?.removed === secondStats?.removed;
+    console.log(`   Stats consistent after double-click: ${consistent ? '✅' : '❌'}`);
 
-  // Should be the same (double-click = no net change in checkbox state)
-  const consistent =
-    firstStats?.added === secondStats?.added && firstStats?.removed === secondStats?.removed;
-  console.log(`   Stats consistent after double-click: ${consistent ? '✅' : '❌'}`);
-
-  await page.close();
-
-  return { firstStats, secondStats, consistent };
+    return { firstStats, secondStats, consistent };
+  } finally {
+    await page.close();
+  }
 }
 
 /**

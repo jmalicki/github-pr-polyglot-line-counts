@@ -21,6 +21,7 @@ import puppeteer, { Browser, ConsoleMessage, HTTPRequest } from 'puppeteer';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
+import { ExtensionStats, getExtensionStats, getFilesUrl } from './test-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,11 +30,6 @@ const resultsDir = join(__dirname, 'results');
 
 if (!fs.existsSync(resultsDir)) {
   fs.mkdirSync(resultsDir, { recursive: true });
-}
-
-interface ExtensionStats {
-  added: number;
-  removed: number;
 }
 
 interface PromiseClearingResult {
@@ -60,113 +56,82 @@ async function testApiPromiseClearing(browser: Browser): Promise<PromiseClearing
   console.log('─'.repeat(60));
 
   const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
 
-  const consoleLogs: string[] = [];
-  page.on('console', (msg: ConsoleMessage) => {
-    if (msg.text().includes('PR Lang Stats')) {
-      consoleLogs.push(msg.text());
-    }
-  });
+  try {
+    await page.setViewport({ width: 1920, height: 1080 });
 
-  const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
-  const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
+    const consoleLogs: string[] = [];
+    page.on('console', (msg: ConsoleMessage) => {
+      if (msg.text().includes('PR Lang Stats')) {
+        consoleLogs.push(msg.text());
+      }
+    });
 
-  console.log(`   Loading: ${filesUrl}`);
-  await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
+    const filesUrl = getFilesUrl(testPR);
 
-  // Wait for extension to finish first analysis
-  await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
-  await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log(`   Loading: ${filesUrl}`);
+    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-  // Check console logs for "Using early API fetch result"
-  const usedEarlyFetch = consoleLogs.some(log => log.includes('Using early API fetch result'));
-  console.log(`   First analysis used early API fetch: ${usedEarlyFetch ? '✅' : '❌'}`);
+    // Wait for extension to finish first analysis
+    await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-  // Get first stats
-  const firstStats = await page.evaluate((): ExtensionStats | null => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-    const totalRow = panel?.querySelector('.total-row');
-    if (!totalRow) return null;
+    // Check console logs for "Using early API fetch result"
+    const usedEarlyFetch = consoleLogs.some(log => log.includes('Using early API fetch result'));
+    console.log(`   First analysis used early API fetch: ${usedEarlyFetch ? '✅' : '❌'}`);
+
+    // Get first stats
+    const firstStats = await getExtensionStats(page);
+    console.log(`   First stats: +${firstStats?.added} -${firstStats?.removed}`);
+
+    // Clear console logs
+    consoleLogs.length = 0;
+
+    // Toggle the checkbox to trigger re-analysis
+    console.log('\n   Toggling "Exclude generated" checkbox...');
+    await page.click('#exclude-generated-checkbox');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Check if second analysis used early fetch (it shouldn't!)
+    const secondUsedEarlyFetch = consoleLogs.some(log =>
+      log.includes('Using early API fetch result')
+    );
+    const fetchedFromAPIAgain = consoleLogs.some(log => log.includes('Fetching from API now'));
+
+    console.log(`   Second analysis used early fetch: ${secondUsedEarlyFetch ? '⚠️ YES' : '✅ NO'}`);
+    console.log(`   Second analysis fetched from API again: ${fetchedFromAPIAgain ? '✅' : '❌'}`);
+
+    // Get second stats
+    const secondStats = await getExtensionStats(page);
+    console.log(`   Second stats: +${secondStats?.added} -${secondStats?.removed}`);
+
+    // Toggle back
+    consoleLogs.length = 0;
+    console.log('\n   Toggling checkbox back...');
+    await page.click('#exclude-generated-checkbox');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    const thirdStats = await getExtensionStats(page);
+    console.log(`   Third stats: +${thirdStats?.added} -${thirdStats?.removed}`);
+
+    // Check consistency
+    const consistent =
+      firstStats?.added === thirdStats?.added && firstStats?.removed === thirdStats?.removed;
+    console.log(`\n   Stats consistent across toggles: ${consistent ? '✅' : '❌'}`);
+
     return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
+      usedEarlyFetch,
+      secondUsedEarlyFetch,
+      fetchedFromAPIAgain,
+      firstStats,
+      secondStats,
+      thirdStats,
+      consistent,
     };
-  });
-  console.log(`   First stats: +${firstStats?.added} -${firstStats?.removed}`);
-
-  // Clear console logs
-  consoleLogs.length = 0;
-
-  // Toggle the checkbox to trigger re-analysis
-  console.log('\n   Toggling "Exclude generated" checkbox...');
-  await page.click('#exclude-generated-checkbox');
-  await new Promise(resolve => setTimeout(resolve, 3000));
-
-  // Check if second analysis used early fetch (it shouldn't!)
-  const secondUsedEarlyFetch = consoleLogs.some(log => log.includes('Using early API fetch result'));
-  const fetchedFromAPIAgain = consoleLogs.some(log => log.includes('Fetching from API now'));
-
-  console.log(`   Second analysis used early fetch: ${secondUsedEarlyFetch ? '⚠️ YES' : '✅ NO'}`);
-  console.log(`   Second analysis fetched from API again: ${fetchedFromAPIAgain ? '✅' : '❌'}`);
-
-  // Get second stats
-  const secondStats = await page.evaluate((): ExtensionStats | null => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-    const totalRow = panel?.querySelector('.total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
-  console.log(`   Second stats: +${secondStats?.added} -${secondStats?.removed}`);
-
-  // Toggle back
-  consoleLogs.length = 0;
-  console.log('\n   Toggling checkbox back...');
-  await page.click('#exclude-generated-checkbox');
-  await new Promise(resolve => setTimeout(resolve, 3000));
-
-  const thirdStats = await page.evaluate((): ExtensionStats | null => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-    const totalRow = panel?.querySelector('.total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
-  console.log(`   Third stats: +${thirdStats?.added} -${thirdStats?.removed}`);
-
-  // Check consistency
-  const consistent =
-    firstStats?.added === thirdStats?.added && firstStats?.removed === thirdStats?.removed;
-  console.log(`\n   Stats consistent across toggles: ${consistent ? '✅' : '❌'}`);
-
-  await page.close();
-
-  return {
-    usedEarlyFetch,
-    secondUsedEarlyFetch,
-    fetchedFromAPIAgain,
-    firstStats,
-    secondStats,
-    thirdStats,
-    consistent,
-  };
+  } finally {
+    await page.close();
+  }
 }
 
 /**
@@ -177,96 +142,89 @@ async function testNetworkFailureOnReanalysis(browser: Browser): Promise<Network
   console.log('─'.repeat(60));
 
   const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
 
-  const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
-  const filesUrl = testPR.endsWith('/files') ? testPR : `${testPR}/files`;
+  try {
+    await page.setViewport({ width: 1920, height: 1080 });
 
-  console.log(`   Loading: ${filesUrl}`);
-  await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+    const testPR = process.env.TEST_PR_URL || 'https://github.com/compio-rs/compio/pull/417';
+    const filesUrl = getFilesUrl(testPR);
 
-  // Wait for first analysis
-  await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
-  await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log(`   Loading: ${filesUrl}`);
+    await page.goto(filesUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-  // Get first stats
-  const firstStats = await page.evaluate((): ExtensionStats | null => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-    const totalRow = panel?.querySelector('.total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
-  console.log(`   First stats (API): +${firstStats?.added} -${firstStats?.removed}`);
+    // Wait for first analysis
+    await page.waitForSelector('#pr-language-stats-panel table', { timeout: 15000 });
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-  // Block GitHub API requests
-  console.log('   Blocking API requests...');
-  await page.setRequestInterception(true);
-  page.on('request', (request: HTTPRequest) => {
-    if (request.url().includes('api.github.com')) {
-      console.log(`   🚫 Blocked: ${request.url().substring(0, 60)}...`);
-      request.abort();
-    } else {
-      request.continue();
+    // Get first stats
+    const firstStats = await getExtensionStats(page);
+    console.log(`   First stats (API): +${firstStats?.added} -${firstStats?.removed}`);
+
+    // Block GitHub API requests
+    console.log('   Blocking API requests...');
+    await page.setRequestInterception(true);
+    page.on('request', (request: HTTPRequest) => {
+      if (request.url().includes('api.github.com')) {
+        console.log(`   🚫 Blocked: ${request.url().substring(0, 60)}...`);
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
+
+    // Toggle checkbox to force re-analysis
+    console.log('   Toggling checkbox with API blocked...');
+    await page.click('#exclude-generated-checkbox');
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // Get second stats (should fall back to DOM or show error)
+    const secondStats = await page.evaluate((): ExtensionStats | { error: string } | null => {
+      const panel = document.querySelector('#pr-language-stats-panel');
+
+      // Check for error message
+      const errorFlash = panel?.querySelector('.flash-error');
+      if (errorFlash) {
+        return { error: errorFlash.textContent || 'Unknown error' };
+      }
+
+      const totalRow = panel?.querySelector('.total-row');
+      if (!totalRow) return null;
+      return {
+        added: parseInt(
+          totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0',
+          10
+        ),
+        removed: parseInt(
+          totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0',
+          10
+        ),
+      };
+    });
+
+    const isError = secondStats && 'error' in secondStats;
+    console.log(
+      `   Second stats (API blocked): ${isError ? (secondStats as { error: string }).error : `+${(secondStats as ExtensionStats)?.added} -${(secondStats as ExtensionStats)?.removed}`}`
+    );
+
+    // Compare results
+    let statsDiffer = false;
+    if (secondStats && !isError && firstStats) {
+      const second = secondStats as ExtensionStats;
+      if (firstStats.added !== second.added || firstStats.removed !== second.removed) {
+        console.log(`\n   ❌ STATS DIFFER WHEN API BLOCKED!`);
+        console.log(`   This could cause intermittent inconsistency.`);
+        statsDiffer = true;
+      } else {
+        console.log(`\n   ✅ Stats remain consistent`);
+      }
+    } else if (isError) {
+      console.log(`\n   ⚠️  Extension showed error when API blocked`);
     }
-  });
 
-  // Toggle checkbox to force re-analysis
-  console.log('   Toggling checkbox with API blocked...');
-  await page.click('#exclude-generated-checkbox');
-  await new Promise(resolve => setTimeout(resolve, 5000));
-
-  // Get second stats (should fall back to DOM or show error)
-  const secondStats = await page.evaluate((): ExtensionStats | { error: string } | null => {
-    const panel = document.querySelector('#pr-language-stats-panel');
-
-    // Check for error message
-    const errorFlash = panel?.querySelector('.flash-error');
-    if (errorFlash) {
-      return { error: errorFlash.textContent || 'Unknown error' };
-    }
-
-    const totalRow = panel?.querySelector('.total-row');
-    if (!totalRow) return null;
-    return {
-      added: parseInt(
-        totalRow.querySelector('.language-added')?.textContent?.replace(/[+]/g, '') || '0'
-      ),
-      removed: parseInt(
-        totalRow.querySelector('.language-removed')?.textContent?.replace(/[-]/g, '') || '0'
-      ),
-    };
-  });
-
-  const isError = secondStats && 'error' in secondStats;
-  console.log(
-    `   Second stats (API blocked): ${isError ? (secondStats as { error: string }).error : `+${(secondStats as ExtensionStats)?.added} -${(secondStats as ExtensionStats)?.removed}`}`
-  );
-
-  // Compare results
-  let statsDiffer = false;
-  if (secondStats && !isError && firstStats) {
-    const second = secondStats as ExtensionStats;
-    if (firstStats.added !== second.added || firstStats.removed !== second.removed) {
-      console.log(`\n   ❌ STATS DIFFER WHEN API BLOCKED!`);
-      console.log(`   This could cause intermittent inconsistency.`);
-      statsDiffer = true;
-    } else {
-      console.log(`\n   ✅ Stats remain consistent`);
-    }
-  } else if (isError) {
-    console.log(`\n   ⚠️  Extension showed error when API blocked`);
+    return { firstStats, secondStats, statsDiffer };
+  } finally {
+    await page.close();
   }
-
-  await page.close();
-
-  return { firstStats, secondStats, statsDiffer };
 }
 
 /**

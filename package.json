@@ -14,7 +14,7 @@
     "test:concurrent": "tsx tests/intermittent/concurrent-analyze.test.ts",
     "test:api-reuse": "tsx tests/intermittent/api-promise-reuse.test.ts",
     "test:reinjection": "tsx tests/intermittent/script-reinjection.test.ts",
-    "test:intermittent": "npm run test:visibility -- --env ITERATIONS=20",
+    "test:intermittent": "ITERATIONS=20 tsx tests/intermittent/panel-visibility.test.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{js,json,css,ts}\"",
